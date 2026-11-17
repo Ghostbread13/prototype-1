@@ -1,4 +1,4 @@
-// بيانات مشروعك على Supabase
+// بيانات مشروعك على Supabase// بيانات مشروعك على Supabase
 const SUPABASE_URL = 'https://fktettiegkmaijnokrwr.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_lZ6v_qG8aYXpwLY8VxPNfA_BfT87Jsh';
 
@@ -47,7 +47,8 @@ window.handleLogin = async function() {
     window.location.href = 'admin.html';
 
         } else if (role === 'boss') {
-            alert("مرحباً بك أيها المستثمر (Boss)");
+         
+          window.location.href = 'investor.html';
         } else if (role === 'worker') {
             alert("مرحباً بك أيها العامل (Worker)");
         } else {
