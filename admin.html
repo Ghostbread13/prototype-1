@@ -95,8 +95,7 @@
         }
     }
 
-  اً
-     // حفظ وتحديث رأس المال في جدول الإعدادات سحابياً
+    // حفظ وتحديث رأس المال في جدول الإعدادات سحابياً
     async function updateCapital() {
         const capitalValue = parseFloat(document.getElementById('capital-input').value);
         
@@ -105,11 +104,12 @@
             return;
         }
 
-        // تحديث السجل مباشرة بناءً على أن key يساوي '1'
+        // استخدام المفتاح '1' ليتطابق مع جدول settings في Supabase
         const { data, error } = await db
             .from('settings')
-            .update({ value: capitalValue })
-            .eq('key', '1');
+            .upsert([
+                { key: '1', value: capitalValue }
+            ], { onConflict: 'key' });
 
         if (error) {
             console.error('خطأ أثناء الحفظ:', error.message);
@@ -118,7 +118,6 @@
             alert('تم حفظ وتحديث رأس المال بنجاح!');
         }
     }
-
 
     window.addInventoryItem = async function() {
         const name = document.getElementById('item-name').value.trim();
