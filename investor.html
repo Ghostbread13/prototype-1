@@ -63,6 +63,7 @@
     const { createClient } = supabase;
     const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+    // دالة جلب بيانات المخزون والأرباح المتوقعة
     async function fetchInvestorData() {
         const tbody = document.getElementById('inventory-table-body');
         
@@ -75,7 +76,6 @@
         }
 
         tbody.innerHTML = '';
-        let calculatedCapital = 0;
         let calculatedProfit = 0;
 
         if (data && data.length > 0) {
@@ -84,7 +84,6 @@
                 const selling = Number(item.selling_price) || 0;
                 const qty = Number(item.quantity) || 0;
 
-                calculatedCapital += (buying * qty);
                 calculatedProfit += ((selling - buying) * qty);
 
                 const row = `<tr>
@@ -97,18 +96,46 @@
                 tbody.innerHTML += row;
             });
 
-            document.getElementById('total-capital').textContent = calculatedCapital.toLocaleString() + ' دج';
+            // عرض الأرباح المتوقعة
             document.getElementById('total-profit').textContent = calculatedProfit.toLocaleString() + ' دج';
 
         } else {
             tbody.innerHTML = `<tr><td colspan="5" style="color: #94a3b8;">لا توجد بيانات مسجلة في المخزون حالياً</td></tr>`;
-            document.getElementById('total-capital').textContent = '0 دج';
             document.getElementById('total-profit').textContent = '0 دج';
         }
     }
 
-    // جلب البيانات فور فتح الصفحة
-    fetchInvestorData();
+    // دالة جلب رأس المال من جدول settings عبر المفتاح "1" (بما أن حقل key أصبح Text)
+    async function loadInvestorCapital() {
+        try {
+            const { data, error } = await db
+                .from('settings')
+                .select('value')
+                .eq('key', '1')
+                .single();
+
+            if (error) {
+                console.error('خطأ في جلب رأس المال:', error.message);
+                return;
+            }
+
+            if (data && data.value !== null) {
+                const calculatedCapital = parseFloat(data.value);
+                const capitalElement = document.getElementById('total-capital');
+                if (capitalElement) {
+                    capitalElement.textContent = calculatedCapital.toLocaleString() + ' دج';
+                }
+            }
+        } catch (err) {
+            console.error('حدث خطأ غير متوقع:', err);
+        }
+    }
+
+    // تنفيذ الدوال فور تحميل الصفحة
+    document.addEventListener('DOMContentLoaded', () => {
+        fetchInvestorData();
+        loadInvestorCapital();
+    });
 </script>
 
 </body>

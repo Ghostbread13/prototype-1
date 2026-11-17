@@ -95,24 +95,30 @@
         }
     }
 
-    // حفظ وتحديث رأس المال في جدول الإعدادات أو المخزون سحابياً
+  اً
+     // حفظ وتحديث رأس المال في جدول الإعدادات سحابياً
     async function updateCapital() {
-        const capitalValue = Number(document.getElementById('capital-input').value);
-        if (!capitalValue) {
-            alert("الرجاء إدخال مبلغ صحيح");
+        const capitalValue = parseFloat(document.getElementById('capital-input').value);
+        
+        if (isNaN(capitalValue) || capitalValue < 0) {
+            alert('الرجاء إدخال مبلغ صحيح لرأس المال');
             return;
         }
 
-        // نقوم بتخزين رأس المال في جدول settings (تأكد من إنشاء جدول settings فيه عمود id=1 وعمود capital)
-        // أو حفظه بطريقة مبسطة:
-        const { error } = await db.from('settings').upsert({ id: 1, capital: capitalValue });
+        // تحديث السجل مباشرة بناءً على أن key يساوي '1'
+        const { data, error } = await db
+            .from('settings')
+            .update({ value: capitalValue })
+            .eq('key', '1');
 
         if (error) {
-            alert("خطأ أثناء حفظ رأس المال: جدول settings غير موجود أو يحتاج صلاحيات. التفاصيل: " + error.message);
+            console.error('خطأ أثناء الحفظ:', error.message);
+            alert('فشل حفظ رأس المال في السحابة: ' + error.message);
         } else {
-            alert("تم تحديث رأس المال وإرساله للسحابة بنجاح!");
+            alert('تم حفظ وتحديث رأس المال بنجاح!');
         }
     }
+
 
     window.addInventoryItem = async function() {
         const name = document.getElementById('item-name').value.trim();
