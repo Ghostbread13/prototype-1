@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>لوحة متابعة المستثمر - إدارة الشركة</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: Tahoma, sans-serif; background: #0f172a; color: #fff; margin: 0; padding: 20px; }
+        .header { background: #1e293b; padding: 15px 20px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+        h2, h3 { color: #38bdf8; margin: 0; }
+        .card { background: #1e293b; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+        .stats-container { display: flex; gap: 15px; margin-bottom: 20px; }
+        .stat-card { background: #1e293b; padding: 20px; border-radius: 12px; flex: 1; box-shadow: 0 4px 10px rgba(0,0,0,0.3); text-align: center; }
+        .stat-card h3 { font-size: 22px; color: #38bdf8; margin-top: 10px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { border: 1px solid #475569; padding: 10px; text-align: center; font-size: 14px; }
+        th { background: #334155; color: #38bdf8; }
+        .view-badge { background: #059669; color: #fff; padding: 5px 12px; border-radius: 20px; font-size: 12px; }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h2>متابعة المستثمر</h2>
+    <span class="view-badge">وضع العرض المباشر (View Only)</span>
+</div>
+
+<!-- إحصائيات مالية تلقائية -->
+<div class="stats-container">
+    <div class="stat-card">
+        <p style="color: #94a3b8; margin: 0;">إجمالي رأس المال المستثمر</p>
+        <h3 id="total-capital">0 دج</h3>
+    </div>
+    <div class="stat-card">
+        <p style="color: #94a3b8; margin: 0;">إجمالي الأرباح المتوقعة</p>
+        <h3 id="total-profit" style="color: #4ade80;">0 دج</h3>
+    </div>
+</div>
+
+<div class="card">
+    <h3>مخزون الفروع والمنتجات</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>القطعة</th>
+                <th>الفرع</th>
+                <th>الشراء</th>
+                <th>البيع</th>
+                <th>الكمية</th>
+            </tr>
+        </thead>
+        <tbody id="inventory-table-body">
+            <tr><td colspan="5" style="color: #94a3b8;">جاري تحميل البيانات من السحابة...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<script>
+    const SUPABASE_URL = 'https://fktettiegkmaijnokrwr.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_lZ6v_qG8aYXpwLY8VxPNfA_BfT87Jsh';
+
+    const { createClient } = supabase;
+    const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    async function fetchInvestorData() {
+        const tbody = document.getElementById('inventory-table-body');
+        
+        const { data, error } = await db.from('inventory').select('*');
+
+        if (error) {
+            console.error("خطأ Supabase:", error.message);
+            tbody.innerHTML = `<tr><td colspan="5" style="color: #f87171;">خطأ في الاتصال: ${error.message}</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = '';
+        let calculatedCapital = 0;
+        let calculatedProfit = 0;
+
+        if (data && data.length > 0) {
+            data.forEach(item => {
+                const buying = Number(item.buying_price) || 0;
+                const selling = Number(item.selling_price) || 0;
+                const qty = Number(item.quantity) || 0;
+
+                calculatedCapital += (buying * qty);
+                calculatedProfit += ((selling - buying) * qty);
+
+                const row = `<tr>
+                    <td>${item.name || ''}</td>
+                    <td>${item.branch || '-'}</td>
+                    <td>${buying} دج</td>
+                    <td>${selling} دج</td>
+                    <td>${qty}</td>
+                </tr>`;
+                tbody.innerHTML += row;
+            });
+
+            document.getElementById('total-capital').textContent = calculatedCapital.toLocaleString() + ' دج';
+            document.getElementById('total-profit').textContent = calculatedProfit.toLocaleString() + ' دج';
+
+        } else {
+            tbody.innerHTML = `<tr><td colspan="5" style="color: #94a3b8;">لا توجد بيانات مسجلة في المخزون حالياً</td></tr>`;
+            document.getElementById('total-capital').textContent = '0 دج';
+            document.getElementById('total-profit').textContent = '0 دج';
+        }
+    }
+
+    // جلب البيانات فور فتح الصفحة
+    fetchInvestorData();
+</script>
+
+</body>
+</html>

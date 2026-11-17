@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>لوحة تحكم المحرر - إدارة الشركة</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: Tahoma, sans-serif; background: #0f172a; color: #fff; margin: 0; padding: 20px; }
+        .header { background: #1e293b; padding: 15px 20px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+        h2, h3 { color: #38bdf8; margin: 0; }
+        .card { background: #1e293b; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+        input { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #475569; border-radius: 6px; background: #0f172a; color: #fff; box-sizing: border-box; }
+        button { background: #0284c7; border: none; padding: 12px 20px; border-radius: 6px; color: #fff; font-size: 16px; cursor: pointer; width: 100%; margin-top: 10px; }
+        button:hover { background: #0369a1; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { border: 1px solid #475569; padding: 10px; text-align: center; font-size: 14px; }
+        th { background: #334155; color: #38bdf8; }
+        .logout-btn { background: #ef4444; width: auto; padding: 8px 15px; font-size: 14px; margin: 0; }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h2>لوحة تحكم المحرر (Admin)</h2>
+    <button class="logout-btn" onclick="logout()">تسجيل الخروج</button>
+</div>
+
+<!-- إدارة رأس المال -->
+<div class="card">
+    <h3>إدارة إجمالي رأس المال</h3>
+    <input type="number" id="capital-input" placeholder="أدخل مبلغ رأس المال الكلي (دج)">
+    <button onclick="updateCapital()" style="background: #059669;">حفظ وتحديث رأس المال للسحابة</button>
+</div>
+
+<!-- إضافة قطعة جديدة للمخزون -->
+<div class="card">
+    <h3>إضافة قطعة / منتج جديد للمخزون</h3>
+    <input type="text" id="item-name" placeholder="اسم القطعة أو المنتج">
+    <input type="text" id="item-branch" placeholder="اكتب اسم الفرع يدوياً (مثال: Temu، الفرع 1...)">
+    <input type="number" id="buying-price" placeholder="سعر الشراء (دج)">
+    <input type="number" id="selling-price" placeholder="سعر البيع المتوقع (دج)">
+    <input type="number" id="quantity" placeholder="الكمية المتوفرة">
+    <button onclick="addInventoryItem()">حفظ وإضافة للمخزون</button>
+</div>
+
+<div class="card">
+    <h3>مخزون الفروع</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>القطعة</th>
+                <th>الفرع</th>
+                <th>الشراء</th>
+                <th>البيع</th>
+                <th>الكمية</th>
+            </tr>
+        </thead>
+        <tbody id="inventory-table-body">
+            <!-- سيتم تعبئة البيانات برمجياً -->
+        </tbody>
+    </table>
+</div>
+
+<script>
+    const SUPABASE_URL = 'https://fktettiegkmaijnokrwr.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_lZ6v_qG8aYXpwLY8VxPNfA_BfT87Jsh';
+
+    const { createClient } = supabase;
+    const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    async function fetchInventory() {
+        const { data, error } = await db.from('inventory').select('*');
+        const tbody = document.getElementById('inventory-table-body');
+        tbody.innerHTML = '';
+
+        if (error) {
+            console.error("خطأ في جلب المخزون:", error.message);
+            return;
+        }
+
+        if (data && data.length > 0) {
+            data.forEach(item => {
+                const row = `<tr>
+                    <td>${item.name || ''}</td>
+                    <td>${item.branch || '-'}</td>
+                    <td>${item.buying_price || 0} دج</td>
+                    <td>${item.selling_price || 0} دج</td>
+                    <td>${item.quantity || 0}</td>
+                </tr>`;
+                tbody.innerHTML += row;
+            });
+        } else {
+            tbody.innerHTML = `<tr><td colspan="5" style="color: #94a3b8;">لا توجد بيانات في المخزون حالياً</td></tr>`;
+        }
+    }
+
+    // حفظ وتحديث رأس المال في جدول الإعدادات أو المخزون سحابياً
+    async function updateCapital() {
+        const capitalValue = Number(document.getElementById('capital-input').value);
+        if (!capitalValue) {
+            alert("الرجاء إدخال مبلغ صحيح");
+            return;
+        }
+
+        // نقوم بتخزين رأس المال في جدول settings (تأكد من إنشاء جدول settings فيه عمود id=1 وعمود capital)
+        // أو حفظه بطريقة مبسطة:
+        const { error } = await db.from('settings').upsert({ id: 1, capital: capitalValue });
+
+        if (error) {
+            alert("خطأ أثناء حفظ رأس المال: جدول settings غير موجود أو يحتاج صلاحيات. التفاصيل: " + error.message);
+        } else {
+            alert("تم تحديث رأس المال وإرساله للسحابة بنجاح!");
+        }
+    }
+
+    window.addInventoryItem = async function() {
+        const name = document.getElementById('item-name').value.trim();
+        const branch = document.getElementById('item-branch').value.trim();
+        const buying_price = Number(document.getElementById('buying-price').value) || 0;
+        const selling_price = Number(document.getElementById('selling-price').value) || 0;
+        const quantity = Number(document.getElementById('quantity').value) || 0;
+
+        if (!name || !branch) {
+            alert("الرجاء إدخال اسم القطعة واسم الفرع");
+            return;
+        }
+
+        const { error } = await db.from('inventory').insert([{
+            name: name,
+            branch: branch,
+            buying_price: buying_price,
+            selling_price: selling_price,
+            quantity: quantity
+        }]);
+
+        if (error) {
+            alert("خطأ Supabase: " + error.message);
+        } else {
+            alert("تمت الإضافة بنجاح!");
+            document.getElementById('item-name').value = '';
+            document.getElementById('item-branch').value = '';
+            document.getElementById('buying-price').value = '';
+            document.getElementById('selling-price').value = '';
+            document.getElementById('quantity').value = '';
+            fetchInventory();
+        }
+    };
+
+    window.logout = async function() {
+        await db.auth.signOut();
+        window.location.href = 'index.html';
+    };
+
+    fetchInventory();
+</script>
+
+</body>
+</html>
