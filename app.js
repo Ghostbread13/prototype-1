@@ -50,7 +50,7 @@ window.handleLogin = async function() {
          
           window.location.href = 'investor.html';
         } else if (role === 'worker') {
-            alert("مرحباً بك أيها العامل (Worker)");
+          window.location.href = 'worker.html';
         } else {
             alert("مرحباً، صلاحيتك هي: " + role);
         }

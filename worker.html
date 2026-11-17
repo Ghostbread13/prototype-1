@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>لوحة العامل - نقطة البيع والمخزون</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: Tahoma, sans-serif; background: #0f172a; color: #fff; margin: 0; padding: 20px; }
+        .header { background: #1e293b; padding: 15px 20px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+        h2, h3 { color: #38bdf8; margin: 0; }
+        .card { background: #1e293b; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { border: 1px solid #475569; padding: 10px; text-align: center; font-size: 14px; }
+        th { background: #334155; color: #38bdf8; }
+        input[type="number"] { width: 70px; padding: 6px; background: #0f172a; border: 1px solid #475569; color: #fff; text-align: center; border-radius: 4px; }
+        .btn-sell { background: #059669; border: none; padding: 6px 12px; border-radius: 6px; color: #fff; font-size: 13px; cursor: pointer; }
+        .btn-sell:hover { background: #047857; }
+        .logout-btn { background: #ef4444; border: none; padding: 8px 15px; border-radius: 6px; color: #fff; font-size: 14px; cursor: pointer; }
+        .out-of-stock { color: #f87171; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h2>لوحة العامل (نقطة البيع)</h2>
+    <button class="logout-btn" onclick="logout()">تسجيل الخروج</button>
+</div>
+
+<div class="card">
+    <h3>المنتجات المتوفرة في المخزون والفروع</h3>
+    <p style="color: #94a3b8; font-size: 13px; margin-top: 5px;">حدد الكمية المراد بيعها لكل قطعة ثم اضغط على "تم البيع".</p>
+    <table>
+        <thead>
+            <tr>
+                <th>القطعة</th>
+                <th>الفرع</th>
+                <th>سعر البيع للقطعة</th>
+                <th>الكمية المتوفرة</th>
+                <th>الكمية المراد بيعها</th>
+                <th>إجراء</th>
+            </tr>
+        </thead>
+        <tbody id="worker-inventory-body">
+            <tr><td colspan="6" style="color: #94a3b8;">جاري تحميل المنتجات...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<script>
+    const SUPABASE_URL = 'https://fktettiegkmaijnokrwr.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_lZ6v_qG8aYXpwLY8VxPNfA_BfT87Jsh';
+
+    const { createClient } = supabase;
+    const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    async function fetchWorkerInventory() {
+        const tbody = document.getElementById('worker-inventory-body');
+        
+        const { data, error } = await db
+            .from('inventory')
+            .select('*')
+            .order('id', { ascending: true });
+
+        if (error) {
+            tbody.innerHTML = `<tr><td colspan="6" style="color: #f87171;">خطأ في جلب البيانات: ${error.message}</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = '';
+
+        if (data && data.length > 0) {
+            data.forEach(item => {
+                const qty = Number(item.quantity) || 0;
+                const isAvailable = qty > 0;
+
+                const row = `<tr>
+                    <td>${item.name || ''}</td>
+                    <td>${item.branch || '-'}</td>
+                    <td>${item.selling_price || 0} دج</td>
+                    <td class="${!isAvailable ? 'out-of-stock' : ''}">${isAvailable ? qty : 'نفذت الكمية'}</td>
+                    <td>
+                        <input type="number" id="qty-${item.id}" value="1" min="1" max="${qty}" ${!isAvailable ? 'disabled' : ''}>
+                    </td>
+                    <td>
+                        <button class="btn-sell" 
+                                onclick="completeSale(${item.id}, '${item.name}', '${item.branch}', ${item.selling_price}, ${qty})" 
+                                ${!isAvailable ? 'disabled' : ''}>
+                            تم البيع
+                        </button>
+                    </td>
+                </tr>`;
+                tbody.innerHTML += row;
+            });
+        } else {
+            tbody.innerHTML = `<tr><td colspan="6" style="color: #94a3b8;">لا توجد منتجات مسجلة حالياً</td></tr>`;
+        }
+    }
+
+    // دالة إتمام البيع، تسجيله في جدول sales، وخصم العدد من inventory
+    window.completeSale = async function(itemId, itemName, branchName, unitPrice, currentQty) {
+        const inputElem = document.getElementById(`qty-${itemId}`);
+        const sellQty = parseInt(inputElem.value) || 0;
+
+        if (sellQty <= 0) {
+            alert("الرجاء إدخال كمية صحيحة للبيع");
+            return;
+        }
+
+        if (sellQty > currentQty) {
+            alert("الكمية المطلوبة أكبر من المتوفرة في المخزون!");
+            return;
+        }
+
+        const newQty = currentQty - sellQty;
+        const totalPrice = sellQty * unitPrice;
+
+        // 1. خصم الكمية من جدول inventory
+        const { error: updateError } = await db
+            .from('inventory')
+            .update({ quantity: newQty })
+            .eq('id', itemId);
+
+        if (updateError) {
+            alert("حدث خطأ أثناء تحديث المخزون: " + updateError.message);
+            return;
+        }
+
+        // 2. تسجيل المعاملة في جدول sales الجديد
+        const sessionUser = await db.auth.getUser();
+        const workerEmail = sessionUser.data.user ? sessionUser.data.user.email : 'unknown';
+
+        const { error: salesError } = await db
+            .from('sales')
+            .insert([{
+                item_name: itemName,
+                branch: branchName,
+                quantity_sold: sellQty,
+                total_price: totalPrice,
+                worker_email: workerEmail
+            }]);
+
+        if (salesError) {
+            alert("تم خصم المخزون، ولكن حدث خطأ في تسجيل سجل المبيعات: " + salesError.message);
+        } else {
+            alert(`تمت عملية البيع بنجاح! تم بيع ${sellQty} من "${itemName}" بقيمة إجمالية ${totalPrice} دج.`);
+            fetchWorkerInventory(); // إعادة تحميل الجدول لتحديث الكميات
+        }
+    };
+
+    window.logout = async function() {
+        await db.auth.signOut();
+        window.location.href = 'index.html';
+    };
+
+    fetchWorkerInventory();
+</script>
+
+</body>
+</html>
