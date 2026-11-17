@@ -17,6 +17,10 @@
         th, td { border: 1px solid #475569; padding: 10px; text-align: center; font-size: 14px; }
         th { background: #334155; color: #38bdf8; }
         .logout-btn { background: #ef4444; width: auto; padding: 8px 15px; font-size: 14px; margin: 0; }
+        .btn-delete { background: #ef4444; padding: 6px 12px; font-size: 13px; width: auto; margin: 0; }
+        .btn-delete:hover { background: #dc2626; }
+        .btn-edit { background: #d97706; padding: 6px 12px; font-size: 13px; width: auto; margin: 0; margin-left: 5px; }
+        .btn-edit:hover { background: #b45309; }
     </style>
 </head>
 <body>
@@ -54,6 +58,7 @@
                 <th>الشراء</th>
                 <th>البيع</th>
                 <th>الكمية</th>
+                <th>الإجراءات</th>
             </tr>
         </thead>
         <tbody id="inventory-table-body">
@@ -70,7 +75,7 @@
     const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     async function fetchInventory() {
-        const { data, error } = await db.from('inventory').select('*');
+        const { data, error } = await db.from('inventory').select('*').order('id', { ascending: true });
         const tbody = document.getElementById('inventory-table-body');
         tbody.innerHTML = '';
 
@@ -87,11 +92,15 @@
                     <td>${item.buying_price || 0} دج</td>
                     <td>${item.selling_price || 0} دج</td>
                     <td>${item.quantity || 0}</td>
+                    <td>
+                        <button class="btn-edit" onclick="editItem(${item.id}, '${item.name}', ${item.quantity}, ${item.selling_price})">تعديل</button>
+                        <button class="btn-delete" onclick="deleteItem(${item.id}, '${item.name}')">حذف</button>
+                    </td>
                 </tr>`;
                 tbody.innerHTML += row;
             });
         } else {
-            tbody.innerHTML = `<tr><td colspan="5" style="color: #94a3b8;">لا توجد بيانات في المخزون حالياً</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="6" style="color: #f87171;">لا توجد بيانات في المخزون حالياً</td></tr>`;
         }
     }
 
@@ -104,12 +113,10 @@
             return;
         }
 
-        // استخدام المفتاح '1' ليتطابق مع جدول settings في Supabase
-        const { data, error } = await db
+        const { error } = await db
             .from('settings')
-            .upsert([
-                { key: '1', value: capitalValue }
-            ], { onConflict: 'key' });
+            .update({ value: capitalValue })
+            .eq('key', '1');
 
         if (error) {
             console.error('خطأ أثناء الحفظ:', error.message);
@@ -148,6 +155,40 @@
             document.getElementById('buying-price').value = '';
             document.getElementById('selling-price').value = '';
             document.getElementById('quantity').value = '';
+            fetchInventory();
+        }
+    };
+
+    // دالة حذف منتج من المخزون
+    window.deleteItem = async function(id, name) {
+        if (confirm(`هل أنت متأكد من حذف المنتح "${name}" من المخزون؟`)) {
+            const { error } = await db.from('inventory').delete().eq('id', id);
+            if (error) {
+                alert("فشل الحذف: " + error.message);
+            } else {
+                alert("تم حذف المنتج بنجاح");
+                fetchInventory();
+            }
+        }
+    };
+
+    // دالة تعديل كمية أو سعر المنتج بسرعة
+    window.editItem = async function(id, name, oldQty, oldPrice) {
+        const newQty = prompt(`تعديل الكمية الجديدة لـ "${name}":`, oldQty);
+        if (newQty === null) return;
+        
+        const newPrice = prompt(`تعديل سعر البيع لـ "${name}":`, oldPrice);
+        if (newPrice === null) return;
+
+        const { error } = await db.from('inventory').update({
+            quantity: Number(newQty),
+            selling_price: Number(newPrice)
+        }).eq('id', id);
+
+        if (error) {
+            alert("فشل التعديل: " + error.message);
+        } else {
+            alert("تم تحديث المنتج بنجاح!");
             fetchInventory();
         }
     };
