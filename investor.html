@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>لوحة متابعة المستثمر - إدارة الشركة</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  
     <style>
         body { font-family: Tahoma, sans-serif; background: #0f172a; color: #fff; margin: 0; padding: 20px; }
         .header { background: #1e293b; padding: 15px 20px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
@@ -72,7 +73,7 @@
 
     const { createClient } = supabase;
     const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
+    // 
     // دالة جلب بيانات المخزون والأرباح المتوقعة
     async function fetchInvestorData() {
         const tbody = document.getElementById('inventory-table-body');
@@ -146,6 +147,20 @@
         fetchInvestorData();
         loadInvestorCapital();
     });
+      // تفعيل الاستماع الفعلي (Realtime) لتحديث البيانات تلقائياً دون تحديث الصفحة
+    const channel = db.channel('schema-db-changes')
+        .on(
+            'postgres_changes',
+            { event: '*', schema: 'public' },
+            (payload) => {
+                console.log('تم رصد تغيير في قاعدة البيانات:', payload);
+                // إعادة تحميل البيانات فوراً عند حدوث أي تغيير (إضافة، تعديل، حذف، بيع)
+                fetchInvestorData();
+                loadInvestorCapital();
+            }
+        )
+        .subscribe();
+
 </script>
 
 </body>
