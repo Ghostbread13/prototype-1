@@ -10,7 +10,7 @@
         .header { background: #1e293b; padding: 15px 20px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
         h2, h3 { color: #38bdf8; margin: 0; }
         .card { background: #1e293b; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
-        input { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #475569; border-radius: 6px; background: #0f172a; color: #fff; box-sizing: border-box; }
+        input, select { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #475569; border-radius: 6px; background: #0f172a; color: #fff; box-sizing: border-box; }
         button { background: #0284c7; border: none; padding: 12px 20px; border-radius: 6px; color: #fff; font-size: 16px; cursor: pointer; width: 100%; margin-top: 10px; }
         button:hover { background: #0369a1; }
         table { width: 100%; border-collapse: collapse; margin-top: 15px; }
@@ -21,6 +21,7 @@
         .btn-delete:hover { background: #dc2626; }
         .btn-edit { background: #d97706; padding: 6px 12px; font-size: 13px; width: auto; margin: 0; margin-left: 5px; }
         .btn-edit:hover { background: #b45309; }
+        .filter-container { display: flex; gap: 10px; margin-bottom: 15px; }
     </style>
 </head>
 <body>
@@ -50,6 +51,15 @@
 
 <div class="card">
     <h3>مخزون الفروع</h3>
+    
+    <!-- شريط البحث والفلترة -->
+    <div class="filter-container">
+        <input type="text" id="search-input" placeholder="ابحث باسم القطعة..." onkeyup="filterTable()">
+        <select id="branch-filter" onchange="filterTable()">
+            <option value="">جميع الفروع</option>
+        </select>
+    </div>
+
     <table>
         <thead>
             <tr>
@@ -74,15 +84,41 @@
     const { createClient } = supabase;
     const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+    let allInventoryData = []; // لتخزين البيانات مؤقتاً للبحث السريع
+
     async function fetchInventory() {
         const { data, error } = await db.from('inventory').select('*').order('id', { ascending: true });
-        const tbody = document.getElementById('inventory-table-body');
-        tbody.innerHTML = '';
-
+        
         if (error) {
             console.error("خطأ في جلب المخزون:", error.message);
             return;
         }
+
+        allInventoryData = data || [];
+        populateBranchDropdown();
+        renderTable(allInventoryData);
+    }
+
+    // تعبئة قائمة الفروع المتاحة في الـ Select تلقائياً
+    function populateBranchDropdown() {
+        const branchSelect = document.getElementById('branch-filter');
+        const currentSelected = branchSelect.value;
+        
+        // استخراج الفروع الفريدة بدون تكرار
+        const branches = [...new Set(allInventoryData.map(item => item.branch))].filter(Boolean);
+        
+        branchSelect.innerHTML = '<option value="">جميع الفروع</option>';
+        branches.forEach(branch => {
+            branchSelect.innerHTML += `<option value="${branch}">${branch}</option>`;
+        });
+        
+        branchSelect.value = currentSelected;
+    }
+
+    // عرض البيانات في الجدول
+    function renderTable(data) {
+        const tbody = document.getElementById('inventory-table-body');
+        tbody.innerHTML = '';
 
         if (data && data.length > 0) {
             data.forEach(item => {
@@ -100,11 +136,24 @@
                 tbody.innerHTML += row;
             });
         } else {
-            tbody.innerHTML = `<tr><td colspan="6" style="color: #f87171;">لا توجد بيانات في المخزون حالياً</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="6" style="color: #94a3b8;">لا توجد تطابق للبحث حالياً</td></tr>`;
         }
     }
 
-    // حفظ وتحديث رأس المال في جدول الإعدادات سحابياً
+    // تصفية الجدول بناءً على البحث والفرع
+    function filterTable() {
+        const searchQuery = document.getElementById('search-input').value.toLowerCase();
+        const selectedBranch = document.getElementById('branch-filter').value;
+
+        const filtered = allInventoryData.filter(item => {
+            const matchesName = (item.name || '').toLowerCase().includes(searchQuery);
+            const matchesBranch = selectedBranch === "" || item.branch === selectedBranch;
+            return matchesName && matchesBranch;
+        });
+
+        renderTable(filtered);
+    }
+
     async function updateCapital() {
         const capitalValue = parseFloat(document.getElementById('capital-input').value);
         
@@ -119,7 +168,6 @@
             .eq('key', '1');
 
         if (error) {
-            console.error('خطأ أثناء الحفظ:', error.message);
             alert('فشل حفظ رأس المال في السحابة: ' + error.message);
         } else {
             alert('تم حفظ وتحديث رأس المال بنجاح!');
@@ -159,9 +207,8 @@
         }
     };
 
-    // دالة حذف منتج من المخزون
     window.deleteItem = async function(id, name) {
-        if (confirm(`هل أنت متأكد من حذف المنتح "${name}" من المخزون؟`)) {
+        if (confirm(`هل أنت متأكد من حذف المنتج "${name}" من المخزون؟`)) {
             const { error } = await db.from('inventory').delete().eq('id', id);
             if (error) {
                 alert("فشل الحذف: " + error.message);
@@ -172,7 +219,6 @@
         }
     };
 
-    // دالة تعديل كمية أو سعر المنتج بسرعة
     window.editItem = async function(id, name, oldQty, oldPrice) {
         const newQty = prompt(`تعديل الكمية الجديدة لـ "${name}":`, oldQty);
         if (newQty === null) return;
