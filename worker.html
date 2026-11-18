@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>لوحة العامل - نقطة البيع والمخزون</title>
+    <title>لوحة العامل - نقطة البيع الذكية (Cart)</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         body { font-family: Tahoma, sans-serif; background: #0f172a; color: #fff; margin: 0; padding: 20px; display: none; }
@@ -15,10 +15,11 @@
         table { width: 100%; border-collapse: collapse; margin-top: 10px; }
         th, td { border: 1px solid #475569; padding: 10px; text-align: center; font-size: 14px; }
         th { background: #334155; color: #38bdf8; }
-        input[type="number"] { width: 70px; padding: 6px; background: #0f172a; border: 1px solid #475569; color: #fff; text-align: center; border-radius: 4px; }
-        .btn-sell { background: #059669; border: none; padding: 6px 12px; border-radius: 6px; color: #fff; font-size: 13px; cursor: pointer; }
-        .btn-sell:hover { background: #047857; }
-        .btn-sell:disabled { background: #475569; cursor: not-allowed; opacity: 0.5; }
+        input[type="number"] { width: 60px; padding: 6px; background: #0f172a; border: 1px solid #475569; color: #fff; text-align: center; border-radius: 4px; }
+        .btn { background: #059669; border: none; padding: 6px 12px; border-radius: 6px; color: #fff; font-size: 13px; cursor: pointer; }
+        .btn:hover { background: #047857; }
+        .btn-danger { background: #ef4444; }
+        .btn-danger:hover { background: #dc2626; }
         .logout-btn { background: #ef4444; border: none; padding: 8px 15px; border-radius: 6px; color: #fff; font-size: 14px; cursor: pointer; }
         .out-of-stock { color: #f87171; font-weight: bold; }
     </style>
@@ -26,14 +27,36 @@
 <body>
 
 <div class="header">
-    <h2>لوحة العامل (نقطة البيع)</h2>
+    <h2>نقطة البيع الذكية (سلة المشتريات)</h2>
     <button class="logout-btn" onclick="logout()">تسجيل الخروج</button>
+</div>
+
+<!-- سلة المشتريات الحالية -->
+<div class="card" style="border: 2px solid #059669;">
+    <h3 style="color: #4ade80;">🛒 سلة المشتريات الحالية</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>القطعة</th>
+                <th>الفرع</th>
+                <th>السعر الفردي</th>
+                <th>الكمية</th>
+                <th>الإجمالي الفرعي</th>
+                <th>إجراء</th>
+            </tr>
+        </thead>
+        <tbody id="cart-table-body">
+            <tr><td colspan="6" style="color: #94a3b8;">السلة فارغة حالياً</td></tr>
+        </tbody>
+    </table>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 15px;">
+        <h3 id="cart-total" style="color: #4ade80;">الإجمالي الكلي: 0 دج</h3>
+        <button class="btn" style="padding: 12px 25px; font-size: 16px;" onclick="checkoutCart()">إتمام البيع وتفريغ السلة ✅</button>
+    </div>
 </div>
 
 <div class="card">
     <h3>المنتجات المتوفرة في المخزون والفروع</h3>
-    <p style="color: #94a3b8; font-size: 13px; margin-top: 5px;">ابحث أو اختر فرعك، ثم حدد الكمية واضغط على "تم البيع".</p>
-    
     <div class="filter-container">
         <input type="text" id="worker-search" placeholder="ابحث باسم القطعة..." onkeyup="filterWorkerTable()">
         <select id="worker-branch-filter" onchange="filterWorkerTable()">
@@ -46,10 +69,10 @@
             <tr>
                 <th>القطعة</th>
                 <th>الفرع</th>
-                <th>سعر البيع للقطعة</th>
-                <th>الكمية المتوفرة</th>
-                <th>الكمية المراد بيعها</th>
-                <th>إجراء</th>
+                <th>سعر البيع</th>
+                <th>المتوفر</th>
+                <th>الكمية المطلوبة</th>
+                <th>إضافة للسلة</th>
             </tr>
         </thead>
         <tbody id="worker-inventory-body"></tbody>
@@ -64,13 +87,11 @@
 
     let currentWorkerEmail = '';
     let workerInventoryData = [];
+    let cart = []; // مصفوفة السلة
 
     async function checkAuth() {
         const { data: { session } } = await db.auth.getSession();
-        if (!session) {
-            window.location.href = 'index.html';
-            return;
-        }
+        if (!session) { window.location.href = 'index.html'; return; }
         const { data: userData } = await db.from('users').select('role').eq('email', session.user.email).maybeSingle();
         if (!userData || (userData.role !== 'worker' && userData.role !== 'admin')) {
             alert('غير مصرح لك بدخول نقطة البيع!');
@@ -113,7 +134,6 @@
     function renderWorkerTable(data) {
         const tbody = document.getElementById('worker-inventory-body');
         tbody.innerHTML = '';
-
         if (data && data.length > 0) {
             data.forEach(item => {
                 const qty = Number(item.quantity) || 0;
@@ -122,15 +142,9 @@
                     <td>${item.name || ''}</td>
                     <td>${item.branch || '-'}</td>
                     <td>${item.selling_price || 0} دج</td>
-                    <td class="${!isAvailable ? 'out-of-stock' : ''}">${isAvailable ? qty : 'نفذت الكمية'}</td>
-                    <td>
-                        <input type="number" id="qty-${item.id}" value="1" min="1" max="${qty}" ${!isAvailable ? 'disabled' : ''}>
-                    </td>
-                    <td>
-                        <button class="btn-sell" onclick="completeSale(this, ${item.id})" ${!isAvailable ? 'disabled' : ''}>
-                            تم البيع
-                        </button>
-                    </td>
+                    <td class="${!isAvailable ? 'out-of-stock' : ''}">${isAvailable ? qty : 'نفذت'}</td>
+                    <td><input type="number" id="qty-${item.id}" value="1" min="1" max="${qty}" ${!isAvailable ? 'disabled' : ''}></td>
+                    <td><button class="btn" onclick="addToCart(${item.id})" ${!isAvailable ? 'disabled' : ''}>إضافة للسلة ➕</button></td>
                 </tr>`;
             });
         } else {
@@ -138,45 +152,104 @@
         }
     }
 
-    window.completeSale = async function(buttonElem, itemId) {
+    // إضافة منتج للسلة المحلية
+    window.addToCart = function(itemId) {
         const item = workerInventoryData.find(i => i.id === itemId);
         if (!item) return;
 
-        buttonElem.disabled = true;
-        buttonElem.textContent = "جاري التنفيذ...";
-
         const inputElem = document.getElementById(`qty-${itemId}`);
-        const sellQty = parseInt(inputElem.value) || 0;
-        const currentQty = Number(item.quantity) || 0;
-        const unitPrice = Number(item.selling_price) || 0;
+        const reqQty = parseInt(inputElem.value) || 0;
+        const maxQty = Number(item.quantity) || 0;
 
-        if (sellQty <= 0 || sellQty > currentQty) {
-            alert("الرجاء إدخال كمية صحيحة متوفرة في المخزون!");
-            buttonElem.disabled = false;
-            buttonElem.textContent = "تم البيع";
+        if (reqQty <= 0 || reqQty > maxQty) {
+            alert("الكمية المطلوبة غير متوفرة في المخزون!");
             return;
         }
 
-        const newQty = currentQty - sellQty;
-        const totalPrice = sellQty * unitPrice;
+        const existing = cart.find(c => c.id === itemId);
+        if (existing) {
+            if (existing.qty + reqQty > maxQty) {
+                alert("إجمالي الكمية في السلة يتجاوز المتوفر بالمخزون!");
+                return;
+            }
+            existing.qty += reqQty;
+        } else {
+            cart.push({
+                id: item.id,
+                name: item.name,
+                branch: item.branch,
+                price: Number(item.selling_price) || 0,
+                qty: reqQty,
+                max: maxQty
+            });
+        }
+        renderCart();
+    };
 
-        const { error: updateError } = await db.from('inventory').update({ quantity: newQty }).eq('id', itemId);
-        if (updateError) {
-            alert("خطأ أثناء تحديث المخزون: " + updateError.message);
-            buttonElem.disabled = false;
-            buttonElem.textContent = "تم البيع";
+    function renderCart() {
+        const tbody = document.getElementById('cart-table-body');
+        tbody.innerHTML = '';
+        let totalSum = 0;
+
+        if (cart.length > 0) {
+            cart.forEach((item, index) => {
+                const subTotal = item.price * item.qty;
+                totalSum += subTotal;
+                tbody.innerHTML += `<tr>
+                    <td>${item.name}</td>
+                    <td>${item.branch}</td>
+                    <td>${item.price} دج</td>
+                    <td>${item.qty}</td>
+                    <td>${subTotal} دج</td>
+                    <td><button class="btn btn-danger" onclick="removeFromCart(${index})">حذف</button></td>
+                </tr>`;
+            });
+        } else {
+            tbody.innerHTML = `<tr><td colspan="6" style="color: #94a3b8;">السلة فارغة حالياً</td></tr>`;
+        }
+        document.getElementById('cart-total').textContent = `الإجمالي الكلي: ${totalSum.toLocaleString()} دج`;
+    }
+
+    window.removeFromCart = function(index) {
+        cart.splice(index, 1);
+        renderCart();
+    };
+
+    // إتمام الشراء لكل عناصر السلة دفعة واحدة
+    window.checkoutCart = async function() {
+        if (cart.length === 0) {
+            alert("السلة فارغة!");
             return;
         }
 
-        await db.from('sales').insert([{
-            item_name: item.name,
-            branch: item.branch,
-            quantity_sold: sellQty,
-            total_price: totalPrice,
-            worker_email: currentWorkerEmail
-        }]);
+        for (let cartItem of cart) {
+            const freshItem = workerInventoryData.find(i => i.id === cartItem.id);
+            const currentQty = freshItem ? Number(freshItem.quantity) || 0 : 0;
 
-        alert(`تم بيع ${sellQty} من "${item.name}" بقيمة ${totalPrice} دج.`);
+            if (cartItem.qty > currentQty) {
+                alert(`عذراً، المنتج "${cartItem.name}" لم يعد بالكمية المطلوبة في المخزون.`);
+                return;
+            }
+
+            const newQty = currentQty - cartItem.qty;
+            const totalPrice = cartItem.qty * cartItem.price;
+
+            // تحديث المخزون
+            await db.from('inventory').update({ quantity: newQty }).eq('id', cartItem.id);
+
+            // تسجيل في جدول المبيعات
+            await db.from('sales').insert([{
+                item_name: cartItem.name,
+                branch: cartItem.branch,
+                quantity_sold: cartItem.qty,
+                total_price: totalPrice,
+                worker_email: currentWorkerEmail
+            }]);
+        }
+
+        alert("تم إتمام عملية البيع بنجاح وتحديث المخزون وسجل المبيعات!");
+        cart = [];
+        renderCart();
         fetchWorkerInventory();
     };
 
@@ -185,8 +258,7 @@
         window.location.href = 'index.html';
     };
 
-    db.channel('worker-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'inventory' }, () => fetchWorkerInventory()).subscribe();
-
+    db.channel('worker-cart-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'inventory' }, () => fetchWorkerInventory()).subscribe();
     checkAuth();
 </script>
 </body>

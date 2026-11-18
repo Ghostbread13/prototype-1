@@ -71,43 +71,52 @@
         fetchExpenses();
     }
 
-    async function fetchExpenses() {
-        const { data, error } = await db.from('expenses').select('*').order('id', { ascending: false });
-        const tbody = document.getElementById('expenses-page-body');
-        tbody.innerHTML = '';
-
-        if (error) {
-            tbody.innerHTML = `<tr><td colspan="4" style="color: #f87171;">خطأ في جلب المصروفات (تأكد من وجود جدول expenses): ${error.message}</td></tr>`;
-            return;
-        }
-
-        if (data && data.length > 0) {
-            data.forEach(exp => {
-                const dateStr = exp.created_at ? new Date(exp.created_at).toLocaleString() : '-';
-                tbody.innerHTML += `<tr>
-                    <td>${exp.title || ''}</td>
-                    <td style="color: #f87171; font-weight: bold;">${exp.amount || 0} دج</td>
-                    <td>${dateStr}</td>
-                    <td>
-                        <button class="btn-delete" onclick="deleteExpense(${exp.id})">حذف</button>
-                    </td>
-                </tr>`;
-            });
-        } else {
-            tbody.innerHTML = `<tr><td colspan="4" style="color: #94a3b8;">لا توجد مصروفات مسجلة حالياً</td></tr>`;
-        }
+        async function fetchExpenses() {
+        const { data, error } = await db.from('costs').select('*').order('id', { ascending: false });
+        // ... باقي الكود
     }
 
     async function addExpense() {
         const title = document.getElementById('expense-title').value.trim();
-        const amount = Number(document.getElementById('expense-amount').value);
+        const price = Number(document.getElementById('expense-amount').value);
 
-        if (!title || isNaN(amount) || amount <= 0) {
+        if (!title || isNaN(price) || price <= 0) {
             alert('الرجاء إدخال وصف صحيح للمصروف ومبلغ أكبر من الصفر');
             return;
         }
 
-        const { error } = await db.from('expenses').insert([{ title, amount }]);
+        const { error } = await db.from('costs').insert([{ title: title, price: price }]);
+        
+        if (error) {
+            alert('فشل حفظ المصروف: ' + error.message);
+        } else {
+            alert('تم تسجيل المصروف بنجاح!');
+            document.getElementById('expense-title').value = '';
+            document.getElementById('expense-amount').value = '';
+            fetchExpenses();
+        }
+    }
+
+    async function deleteExpense(id) {
+        if (confirm('هل أنت متأكد من حذف هذا المصروف؟')) {
+            const { error } = await db.from('costs').delete().eq('id', id);
+            // ... باقي الكود
+        }
+    }
+
+
+    async function addExpense() {
+        const title = document.getElementById('expense-title').value.trim();
+        const price = Number(document.getElementById('expense-amount').value);
+
+        if (!title || isNaN(price) || price <= 0) {
+            alert('الرجاء إدخال وصف صحيح للمصروف ومبلغ أكبر من الصفر');
+            return;
+        }
+
+        // استخدام الحقل price تماماً كما هو موجود في جدول Supabase
+        const { error } = await db.from('expenses').insert([{ title: title, price: price }]);
+        
         if (error) {
             alert('فشل حفظ المصروف: ' + error.message);
         } else {
@@ -134,3 +143,4 @@
 </script>
 </body>
 </html>
+
