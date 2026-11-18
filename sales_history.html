@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>سجل المبيعات والتقارير - إدارة الشركة</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: Tahoma, sans-serif; background: #0f172a; color: #fff; margin: 0; padding: 20px; }
+        .header { background: #1e293b; padding: 15px 20px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); flex-wrap: wrap; gap: 10px; }
+        h2, h3 { color: #38bdf8; margin: 0; }
+        .card { background: #1e293b; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+        .actions-bar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 15px; }
+        .btn { border: none; padding: 10px 16px; border-radius: 6px; color: #fff; font-size: 14px; cursor: pointer; text-decoration: none; display: inline-block; }
+        .btn-back { background: #475569; }
+        .btn-back:hover { background: #334155; }
+        .btn-csv { background: #059669; }
+        .btn-csv:hover { background: #047857; }
+        .btn-pdf { background: #0284c7; }
+        .btn-pdf:hover { background: #0369a1; }
+        .filter-container { display: flex; gap: 10px; margin-bottom: 15px; }
+        input, select { width: 100%; padding: 10px; border: 1px solid #475569; border-radius: 6px; background: #0f172a; color: #fff; box-sizing: border-box; }
+        .stats { display: flex; gap: 15px; margin-bottom: 20px; }
+        .stat-box { background: #0f172a; padding: 15px; border-radius: 8px; flex: 1; text-align: center; border: 1px solid #334155; }
+        .stat-box span { display: block; color: #94a3b8; font-size: 13px; margin-bottom: 5px; }
+        .stat-box strong { font-size: 20px; color: #4ade80; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid #475569; padding: 10px; text-align: center; font-size: 14px; }
+        th { background: #334155; color: #38bdf8; }
+
+        /* تنسيق مخصص للطباعة وحفظ PDF */
+        @media print {
+            body { background: #fff; color: #000; padding: 0; }
+            .header, .card { background: #fff; box-shadow: none; border: none; padding: 0; }
+            .no-print { display: none !important; }
+            h2, h3 { color: #000; margin-bottom: 15px; }
+            th { background: #f1f5f9 !important; color: #000 !important; border: 1px solid #000; }
+            td { color: #000 !important; border: 1px solid #000; }
+            .stat-box { background: #f8fafc; border: 1px solid #000; }
+            .stat-box strong { color: #000; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h2>سجل المبيعات الفعلي والتقارير</h2>
+    <div class="actions-bar no-print" style="margin: 0;">
+        <button class="btn btn-csv" onclick="downloadTXT()">تحميل كملف نصي (TXT / CSV)</button>
+        <button class="btn btn-pdf" onclick="window.print()">حفظ كـ PDF / طباعة</button>
+        <a href="investor.html" class="btn btn-back">الرجوع </a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="stats">
+        <div class="stat-box">
+            <span>إجمالي المداخيل المعروضة</span>
+            <strong id="total-revenue">0 دج</strong>
+        </div>
+        <div class="stat-box">
+            <span>عدد عمليات البيع</span>
+            <strong id="total-count" style="color: #38bdf8;">0</strong>
+        </div>
+    </div>
+
+    <div class="filter-container no-print">
+        <input type="text" id="search-sales" placeholder="ابحث باسم القطعة أو إيميل العامل..." onkeyup="filterSales()">
+        <select id="branch-sales-filter" onchange="filterSales()">
+            <option value="">جميع الفروع</option>
+        </select>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>القطعة</th>
+                <th>الفرع</th>
+                <th>الكمية المباعة</th>
+                <th>المبلغ الإجمالي</th>
+                <th>البائع (العامل)</th>
+                <th>التاريخ والوقت</th>
+            </tr>
+        </thead>
+        <tbody id="sales-table-body">
+            <tr><td colspan="6" style="color: #94a3b8;">جاري تحميل سجل المبيعات...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<script>
+    const SUPABASE_URL = 'https://fktettiegkmaijnokrwr.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_lZ6v_qG8aYXpwLY8VxPNfA_BfT87Jsh';
+
+    const { createClient } = supabase;
+    const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    let allSalesData = [];
+    let currentFilteredData = [];
+
+    async function fetchSales() {
+        const { data, error } = await db
+            .from('sales')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+        if (error) {
+            document.getElementById('sales-table-body').innerHTML = 
+                `<tr><td colspan="6" style="color: #f87171;">خطأ في جلب البيانات: ${error.message}</td></tr>`;
+            return;
+        }
+
+        allSalesData = data || [];
+        currentFilteredData = allSalesData;
+        populateBranches();
+        renderSales(allSalesData);
+    }
+
+    function populateBranches() {
+        const select = document.getElementById('branch-sales-filter');
+        const branches = [...new Set(allSalesData.map(s => s.branch))].filter(Boolean);
+        branches.forEach(b => {
+            select.innerHTML += `<option value="${b}">${b}</option>`;
+        });
+    }
+
+    function renderSales(data) {
+        const tbody = document.getElementById('sales-table-body');
+        tbody.innerHTML = '';
+        let totalRev = 0;
+
+        if (data.length > 0) {
+            data.forEach(sale => {
+                const price = Number(sale.total_price) || 0;
+                totalRev += price;
+                const dateStr = sale.created_at ? new Date(sale.created_at).toLocaleString('ar-DZ') : '-';
+
+                tbody.innerHTML += `<tr>
+                    <td>${sale.item_name || ''}</td>
+                    <td>${sale.branch || '-'}</td>
+                    <td>${sale.quantity_sold || 0}</td>
+                    <td style="color: #4ade80; font-weight: bold;">${price.toLocaleString()} دج</td>
+                    <td>${sale.worker_email || '-'}</td>
+                    <td style="font-size: 12px;">${dateStr}</td>
+                </tr>`;
+            });
+        } else {
+            tbody.innerHTML = `<tr><td colspan="6" style="color: #94a3b8;">لا توجد مبيعات مطابقة</td></tr>`;
+        }
+
+        document.getElementById('total-revenue').textContent = totalRev.toLocaleString() + ' دج';
+        document.getElementById('total-count').textContent = data.length;
+    }
+
+    function filterSales() {
+        const query = document.getElementById('search-sales').value.toLowerCase();
+        const branch = document.getElementById('branch-sales-filter').value;
+
+        currentFilteredData = allSalesData.filter(s => {
+            const matchText = (s.item_name || '').toLowerCase().includes(query) || 
+                              (s.worker_email || '').toLowerCase().includes(query);
+            const matchBranch = branch === '' || s.branch === branch;
+            return matchText && matchBranch;
+        });
+
+        renderSales(currentFilteredData);
+    }
+
+    // دالة تحميل السجل كملف نصي منظم
+    function downloadTXT() {
+        if (currentFilteredData.length === 0) {
+            alert('لا توجد بيانات لتحميلها!');
+            return;
+        }
+
+        let content = "=== تقرير سجل المبيعات ===\n";
+        content += "تاريخ الاستخراج: " + new Date().toLocaleString('ar-DZ') + "\n";
+        content += "=========================================\n\n";
+
+        let sum = 0;
+        currentFilteredData.forEach((s, index) => {
+            const price = Number(s.total_price) || 0;
+            sum += price;
+            const dateStr = s.created_at ? new Date(s.created_at).toLocaleString('ar-DZ') : '-';
+            content += `${index + 1}. القطعة: ${s.item_name} | الفرع: ${s.branch} | الكمية: ${s.quantity_sold} | الإجمالي: ${price} دج | البائع: ${s.worker_email} | التاريخ: ${dateStr}\n`;
+        });
+
+        content += "\n=========================================\n";
+        content += `إجمالي المبيعات في هذا التقرير: ${sum.toLocaleString()} دج\n`;
+
+        // إنشاء الملف وتحميله
+        const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `تقرير_المبيعات_${new Date().toISOString().slice(0,10)}.txt`;
+        link.click();
+    }
+
+    fetchSales();
+</script>
+
+</body>
+</html>
