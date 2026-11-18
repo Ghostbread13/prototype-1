@@ -48,7 +48,8 @@
     <div class="actions-bar no-print" style="margin: 0;">
         <button class="btn btn-csv" onclick="downloadTXT()">تحميل كملف نصي (TXT / CSV)</button>
         <button class="btn btn-pdf" onclick="window.print()">حفظ كـ PDF / طباعة</button>
-        <a href="investor.html" class="btn btn-back">الرجوع </a>
+      <button class="btn btn-back" onclick="history.back()">الرجوع</button>
+
     </div>
 </div>
 
@@ -97,6 +98,15 @@
 
     let allSalesData = [];
     let currentFilteredData = [];
+    async function checkAuth() {
+        const { data: { session } } = await db.auth.getSession();
+        if (!session) {
+            window.location.href = 'index.html';
+            return;
+        }
+        fetchSales();
+    }
+    // واستبدل fetchSales(); في آخر الملف بـ checkAuth();
 
     async function fetchSales() {
         const { data, error } = await db

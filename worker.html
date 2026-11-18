@@ -6,11 +6,13 @@
     <title>لوحة العامل - نقطة البيع والمخزون</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
-        body { font-family: Tahoma, sans-serif; background: #0f172a; color: #fff; margin: 0; padding: 20px; }
+        body { font-family: Tahoma, sans-serif; background: #0f172a; color: #fff; margin: 0; padding: 20px; display: none; }
         .header { background: #1e293b; padding: 15px 20px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
         h2, h3 { color: #38bdf8; margin: 0; }
         .card { background: #1e293b; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
-        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        .filter-container { display: flex; gap: 10px; margin: 15px 0; }
+        .filter-container input, .filter-container select { width: 100%; padding: 10px; border: 1px solid #475569; border-radius: 6px; background: #0f172a; color: #fff; box-sizing: border-box; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
         th, td { border: 1px solid #475569; padding: 10px; text-align: center; font-size: 14px; }
         th { background: #334155; color: #38bdf8; }
         input[type="number"] { width: 70px; padding: 6px; background: #0f172a; border: 1px solid #475569; color: #fff; text-align: center; border-radius: 4px; }
@@ -30,7 +32,15 @@
 
 <div class="card">
     <h3>المنتجات المتوفرة في المخزون والفروع</h3>
-    <p style="color: #94a3b8; font-size: 13px; margin-top: 5px;">حدد الكمية المراد بيعها لكل قطعة ثم اضغط على "تم البيع".</p>
+    <p style="color: #94a3b8; font-size: 13px; margin-top: 5px;">ابحث أو اختر فرعك، ثم حدد الكمية واضغط على "تم البيع".</p>
+    
+    <div class="filter-container">
+        <input type="text" id="worker-search" placeholder="ابحث باسم القطعة..." onkeyup="filterWorkerTable()">
+        <select id="worker-branch-filter" onchange="filterWorkerTable()">
+            <option value="">جميع الفروع</option>
+        </select>
+    </div>
+
     <table>
         <thead>
             <tr>
@@ -42,59 +52,73 @@
                 <th>إجراء</th>
             </tr>
         </thead>
-        <tbody id="worker-inventory-body">
-            <tr><td colspan="6" style="color: #94a3b8;">جاري تحميل المنتجات...</td></tr>
-        </tbody>
+        <tbody id="worker-inventory-body"></tbody>
     </table>
 </div>
 
 <script>
     const SUPABASE_URL = 'https://fktettiegkmaijnokrwr.supabase.co';
     const SUPABASE_ANON_KEY = 'sb_publishable_lZ6v_qG8aYXpwLY8VxPNfA_BfT87Jsh';
-
     const { createClient } = supabase;
     const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    async function forceLogout(reason) {
-        alert(reason);
-        await db.auth.signOut();
-        window.location.href = 'index.html';
-    }
+    let currentWorkerEmail = '';
+    let workerInventoryData = [];
 
-    // دالة التحقق الآمنة والسريعة
-    async function verifyWorkerAccess() {
-        try {
-            const { data: authData } = await db.auth.getUser();
-            if (!authData || !authData.user || !authData.user.email) {
-                return 'worker@system.local'; // قيمة افتراضية لتفادي التوقف لو حدث تأخير في الجلسة
-            }
-            return authData.user.email;
-        } catch (e) {
-            return 'worker@system.local';
+    async function checkAuth() {
+        const { data: { session } } = await db.auth.getSession();
+        if (!session) {
+            window.location.href = 'index.html';
+            return;
         }
+        const { data: userData } = await db.from('users').select('role').eq('email', session.user.email).maybeSingle();
+        if (!userData || (userData.role !== 'worker' && userData.role !== 'admin')) {
+            alert('غير مصرح لك بدخول نقطة البيع!');
+            window.location.href = 'index.html';
+            return;
+        }
+        currentWorkerEmail = session.user.email;
+        document.body.style.display = 'block';
+        fetchWorkerInventory();
     }
 
     async function fetchWorkerInventory() {
+        const { data, error } = await db.from('inventory').select('*').order('id', { ascending: true });
+        if (error) return;
+        workerInventoryData = data || [];
+        populateWorkerBranches();
+        filterWorkerTable();
+    }
+
+    function populateWorkerBranches() {
+        const select = document.getElementById('worker-branch-filter');
+        const current = select.value;
+        const branches = [...new Set(workerInventoryData.map(i => i.branch))].filter(Boolean);
+        select.innerHTML = '<option value="">جميع الفروع</option>';
+        branches.forEach(b => select.innerHTML += `<option value="${b}">${b}</option>`);
+        select.value = current;
+    }
+
+    function filterWorkerTable() {
+        const query = document.getElementById('worker-search').value.toLowerCase();
+        const branch = document.getElementById('worker-branch-filter').value;
+        const filtered = workerInventoryData.filter(item => {
+            const matchName = (item.name || '').toLowerCase().includes(query);
+            const matchBranch = branch === '' || item.branch === branch;
+            return matchName && matchBranch;
+        });
+        renderWorkerTable(filtered);
+    }
+
+    function renderWorkerTable(data) {
         const tbody = document.getElementById('worker-inventory-body');
-        
-        const { data, error } = await db
-            .from('inventory')
-            .select('*')
-            .order('id', { ascending: true });
-
-        if (error) {
-            tbody.innerHTML = `<tr><td colspan="6" style="color: #f87171;">خطأ في جلب البيانات: ${error.message}</td></tr>`;
-            return;
-        }
-
         tbody.innerHTML = '';
 
         if (data && data.length > 0) {
             data.forEach(item => {
                 const qty = Number(item.quantity) || 0;
                 const isAvailable = qty > 0;
-
-                const row = `<tr>
+                tbody.innerHTML += `<tr>
                     <td>${item.name || ''}</td>
                     <td>${item.branch || '-'}</td>
                     <td>${item.selling_price || 0} دج</td>
@@ -103,39 +127,31 @@
                         <input type="number" id="qty-${item.id}" value="1" min="1" max="${qty}" ${!isAvailable ? 'disabled' : ''}>
                     </td>
                     <td>
-                        <button class="btn-sell" 
-                                onclick="completeSale(this, ${item.id}, '${item.name}', '${item.branch}', ${item.selling_price}, ${qty})" 
-                                ${!isAvailable ? 'disabled' : ''}>
+                        <button class="btn-sell" onclick="completeSale(this, ${item.id})" ${!isAvailable ? 'disabled' : ''}>
                             تم البيع
                         </button>
                     </td>
                 </tr>`;
-                tbody.innerHTML += row;
             });
         } else {
-            tbody.innerHTML = `<tr><td colspan="6" style="color: #94a3b8;">لا توجد منتجات مسجلة حالياً</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="6" style="color: #94a3b8;">لا توجد منتجات مطابقة</td></tr>`;
         }
     }
 
-    // دالة إتمام البيع مع قفل الزر والحماية ضد النقر المتكرر
-    window.completeSale = async function(buttonElem, itemId, itemName, branchName, unitPrice, currentQty) {
+    window.completeSale = async function(buttonElem, itemId) {
+        const item = workerInventoryData.find(i => i.id === itemId);
+        if (!item) return;
+
         buttonElem.disabled = true;
         buttonElem.textContent = "جاري التنفيذ...";
 
-        const validWorkerEmail = await verifyWorkerAccess();
-
         const inputElem = document.getElementById(`qty-${itemId}`);
         const sellQty = parseInt(inputElem.value) || 0;
+        const currentQty = Number(item.quantity) || 0;
+        const unitPrice = Number(item.selling_price) || 0;
 
-        if (sellQty <= 0) {
-            alert("الرجاء إدخال كمية صحيحة للبيع");
-            buttonElem.disabled = false;
-            buttonElem.textContent = "تم البيع";
-            return;
-        }
-
-        if (sellQty > currentQty) {
-            alert("الكمية المطلوبة أكبر من المتوفرة في المخزون!");
+        if (sellQty <= 0 || sellQty > currentQty) {
+            alert("الرجاء إدخال كمية صحيحة متوفرة في المخزون!");
             buttonElem.disabled = false;
             buttonElem.textContent = "تم البيع";
             return;
@@ -144,29 +160,23 @@
         const newQty = currentQty - sellQty;
         const totalPrice = sellQty * unitPrice;
 
-        // 1. خصم الكمية من المخزون
-        const { error: updateError } = await db
-            .from('inventory')
-            .update({ quantity: newQty })
-            .eq('id', itemId);
-
+        const { error: updateError } = await db.from('inventory').update({ quantity: newQty }).eq('id', itemId);
         if (updateError) {
-            alert("حدث خطأ أثناء تحديث المخزون: " + updateError.message);
+            alert("خطأ أثناء تحديث المخزون: " + updateError.message);
             buttonElem.disabled = false;
             buttonElem.textContent = "تم البيع";
             return;
         }
 
-        // 2. تسجيل المعاملة في جدول sales
         await db.from('sales').insert([{
-            item_name: itemName,
-            branch: branchName,
+            item_name: item.name,
+            branch: item.branch,
             quantity_sold: sellQty,
             total_price: totalPrice,
-            worker_email: validWorkerEmail
+            worker_email: currentWorkerEmail
         }]);
 
-        alert(`تمت عملية البيع بنجاح! تم بيع ${sellQty} من "${itemName}" بقيمة إجمالية ${totalPrice} دج.`);
+        alert(`تم بيع ${sellQty} من "${item.name}" بقيمة ${totalPrice} دج.`);
         fetchWorkerInventory();
     };
 
@@ -175,9 +185,9 @@
         window.location.href = 'index.html';
     };
 
-    // تحميل المنتجات فور فتح الصفحة
-    fetchWorkerInventory();
-</script>
+    db.channel('worker-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'inventory' }, () => fetchWorkerInventory()).subscribe();
 
+    checkAuth();
+</script>
 </body>
 </html>

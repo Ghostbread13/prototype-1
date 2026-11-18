@@ -7,45 +7,51 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   
     <style>
-        body { font-family: Tahoma, sans-serif; background: #0f172a; color: #fff; margin: 0; padding: 20px; }
-        .header { background: #1e293b; padding: 15px 20px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+        body { font-family: Tahoma, sans-serif; background: #0f172a; color: #fff; margin: 0; padding: 20px; display: none; }
+        .header { background: #1e293b; padding: 15px 20px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); flex-wrap: wrap; gap: 10px; }
         h2, h3 { color: #38bdf8; margin: 0; }
         .card { background: #1e293b; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
-        .stats-container { display: flex; gap: 15px; margin-bottom: 20px; }
-        .stat-card { background: #1e293b; padding: 20px; border-radius: 12px; flex: 1; box-shadow: 0 4px 10px rgba(0,0,0,0.3); text-align: center; }
-        .stat-card h3 { font-size: 22px; color: #38bdf8; margin-top: 10px; }
+        .stats-container { display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap; }
+        .stat-card { background: #1e293b; padding: 20px; border-radius: 12px; flex: 1; min-width: 200px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); text-align: center; }
+        .stat-card h3 { font-size: 20px; color: #38bdf8; margin-top: 10px; }
         table { width: 100%; border-collapse: collapse; margin-top: 15px; }
         th, td { border: 1px solid #475569; padding: 10px; text-align: center; font-size: 14px; }
         th { background: #334155; color: #38bdf8; }
         .view-badge { background: #059669; color: #fff; padding: 5px 12px; border-radius: 20px; font-size: 12px; }
+        .nav-btn { background: #0284c7; color: #fff; text-decoration: none; padding: 8px 15px; border-radius: 6px; font-size: 14px; display: inline-block; }
+        .logout-btn { background: #ef4444; border: none; padding: 8px 15px; border-radius: 6px; color: #fff; font-size: 14px; cursor: pointer; }
     </style>
 </head>
 <body>
 
 <div class="header">
-  
-    <span class="view-badge">وضع العرض المباشر (View Only)</span>
-</div>
-
-<div class="header">
-    <h2>متابعة المستثمر</h2>
+    <div style="display: flex; align-items: center; gap: 15px;">
+        <h2>متابعة المستثمر</h2>
+        <span class="view-badge">وضع العرض المباشر (View Only)</span>
+    </div>
     <div style="display: flex; gap: 10px; align-items: center;">
-        <a href="sales_history.html" style="background: #0284c7; color: #fff; text-decoration: none; padding: 8px 15px; border-radius: 6px; font-size: 14px;">سجل المبيعات والتقارير</a>
-        
-       <a href="index.html" style="background: #FF0000; color: #fff; text-decoration: none; padding: 8px 15px; border-radius: 6px; font-size: 14px;">تسجيل الخروج</a>
+        <a href="sales_history.html" class="nav-btn">سجل المبيعات والتقارير</a>
+        <button class="logout-btn" onclick="logout()">تسجيل الخروج</button>
     </div>
 </div>
 
-  
-<!-- إحصائيات مالية تلقائية -->
+<!-- إحصائيات مالية شاملة -->
 <div class="stats-container">
     <div class="stat-card">
         <p style="color: #94a3b8; margin: 0;">إجمالي رأس المال المستثمر</p>
         <h3 id="total-capital">0 دج</h3>
     </div>
     <div class="stat-card">
-        <p style="color: #94a3b8; margin: 0;">إجمالي الأرباح المتوقعة</p>
-        <h3 id="total-profit" style="color: #4ade80;">0 دج</h3>
+        <p style="color: #94a3b8; margin: 0;">إجمالي المبيعات المحققة (الكاش)</p>
+        <h3 id="total-revenue" style="color: #38bdf8;">0 دج</h3>
+    </div>
+    <div class="stat-card">
+        <p style="color: #94a3b8; margin: 0;">صافي الأرباح الفعلية</p>
+        <h3 id="actual-profit" style="color: #4ade80;">0 دج</h3>
+    </div>
+    <div class="stat-card">
+        <p style="color: #94a3b8; margin: 0;">الأرباح المتوقعة للمخزون</p>
+        <h3 id="total-profit" style="color: #facc15;">0 دج</h3>
     </div>
 </div>
 
@@ -73,15 +79,36 @@
 
     const { createClient } = supabase;
     const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    // 
-    // دالة جلب بيانات المخزون والأرباح المتوقعة
+
+    // 1. حارس الأمان للمستثمر
+    async function checkAuth() {
+        const { data: { session } } = await db.auth.getSession();
+        if (!session) {
+            window.location.href = 'index.html';
+            return;
+        }
+        const { data: userData } = await db.from('users').select('role').eq('email', session.user.email).maybeSingle();
+        if (!userData || (userData.role !== 'boss' && userData.role !== 'admin')) {
+            alert('غير مصرح لك بدخول لوحة المستثمر!');
+            window.location.href = 'index.html';
+            return;
+        }
+        document.body.style.display = 'block';
+        loadAllData();
+    }
+
+    async function loadAllData() {
+        fetchInvestorData();
+        loadInvestorCapital();
+        fetchSalesStats();
+    }
+
+    // جلب بيانات المخزون والأرباح المتوقعة
     async function fetchInvestorData() {
         const tbody = document.getElementById('inventory-table-body');
-        
         const { data, error } = await db.from('inventory').select('*');
 
         if (error) {
-            console.error("خطأ Supabase:", error.message);
             tbody.innerHTML = `<tr><td colspan="5" style="color: #f87171;">خطأ في الاتصال: ${error.message}</td></tr>`;
             return;
         }
@@ -97,70 +124,75 @@
 
                 calculatedProfit += ((selling - buying) * qty);
 
-                const row = `<tr>
+                tbody.innerHTML += `<tr>
                     <td>${item.name || ''}</td>
                     <td>${item.branch || '-'}</td>
                     <td>${buying} دج</td>
                     <td>${selling} دج</td>
                     <td>${qty}</td>
                 </tr>`;
-                tbody.innerHTML += row;
             });
-
-            // عرض الأرباح المتوقعة
             document.getElementById('total-profit').textContent = calculatedProfit.toLocaleString() + ' دج';
-
         } else {
             tbody.innerHTML = `<tr><td colspan="5" style="color: #94a3b8;">لا توجد بيانات مسجلة في المخزون حالياً</td></tr>`;
             document.getElementById('total-profit').textContent = '0 دج';
         }
     }
 
-    // دالة جلب رأس المال من جدول settings عبر المفتاح "1" (بما أن حقل key أصبح Text)
+    // جلب إجمالي المبيعات المحققة والأرباح الفعلية من جدول sales
+    async function fetchSalesStats() {
+        const { data, error } = await db.from('sales').select('*');
+        if (error) return;
+
+        let totalRevenue = 0;
+        let actualProfit = 0;
+
+        if (data && data.length > 0) {
+            // نحتاج لبيانات الشراء لنفس القطع، لحساب الربح الفعلي بدقة
+            const { data: invData } = await db.from('inventory').select('name, buying_price');
+            
+            data.forEach(sale => {
+                const rev = Number(sale.total_price) || 0;
+                totalRevenue += rev;
+
+                // محاولة إيجاد سعر الشراء لحساب الربح الفعلي
+                const matchedItem = invData ? invData.find(i => i.name === sale.item_name) : null;
+                const buyPrice = matchedItem ? Number(matchedItem.buying_price) || 0 : 0;
+                const qtySold = Number(sale.quantity_sold) || 0;
+
+                actualProfit += (rev - (buyPrice * qtySold));
+            });
+        }
+
+        document.getElementById('total-revenue').textContent = totalRevenue.toLocaleString() + ' دج';
+        document.getElementById('actual-profit').textContent = actualProfit.toLocaleString() + ' دج';
+    }
+
+    // جلب رأس المال
     async function loadInvestorCapital() {
         try {
-            const { data, error } = await db
-                .from('settings')
-                .select('value')
-                .eq('key', '1')
-                .single();
-
-            if (error) {
-                console.error('خطأ في جلب رأس المال:', error.message);
-                return;
-            }
-
+            const { data, error } = await db.from('settings').select('value').eq('key', '1').single();
             if (data && data.value !== null) {
-                const calculatedCapital = parseFloat(data.value);
-                const capitalElement = document.getElementById('total-capital');
-                if (capitalElement) {
-                    capitalElement.textContent = calculatedCapital.toLocaleString() + ' دج';
-                }
+                document.getElementById('total-capital').textContent = parseFloat(data.value).toLocaleString() + ' دج';
             }
         } catch (err) {
-            console.error('حدث خطأ غير متوقع:', err);
+            console.error('خطأ:', err);
         }
     }
 
-    // تنفيذ الدوال فور تحميل الصفحة
-    document.addEventListener('DOMContentLoaded', () => {
-        fetchInvestorData();
-        loadInvestorCapital();
-    });
-      // تفعيل الاستماع الفعلي (Realtime) لتحديث البيانات تلقائياً دون تحديث الصفحة
-    const channel = db.channel('schema-db-changes')
-        .on(
-            'postgres_changes',
-            { event: '*', schema: 'public' },
-            (payload) => {
-                console.log('تم رصد تغيير في قاعدة البيانات:', payload);
-                // إعادة تحميل البيانات فوراً عند حدوث أي تغيير (إضافة، تعديل، حذف، بيع)
-                fetchInvestorData();
-                loadInvestorCapital();
-            }
-        )
-        .subscribe();
+    window.logout = async function() {
+        await db.auth.signOut();
+        window.location.href = 'index.html';
+    };
 
+    // التحديث الفعلي (Realtime) لجميع التغييرات
+    db.channel('investor-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public' }, () => {
+          loadAllData();
+      })
+      .subscribe();
+
+    checkAuth();
 </script>
 
 </body>
