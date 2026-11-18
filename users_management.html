@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>إدارة المستخدمين والصلاحيات - إدارة الشركة</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: Tahoma, sans-serif; background: #0f172a; color: #fff; margin: 0; padding: 20px; display: none; }
+        .header { background: #1e293b; padding: 15px 20px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+        h2 { color: #38bdf8; margin: 0; }
+        .card { background: #1e293b; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); border: 2px solid #7c3aed; }
+        input, select { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #475569; border-radius: 6px; background: #0f172a; color: #fff; box-sizing: border-box; }
+        button { background: #7c3aed; border: none; padding: 12px 20px; border-radius: 6px; color: #fff; font-size: 16px; cursor: pointer; width: 100%; margin-top: 10px; }
+        button:hover { background: #6d28d9; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { border: 1px solid #475569; padding: 10px; text-align: center; font-size: 14px; }
+        th { background: #334155; color: #38bdf8; }
+        .btn-delete { background: #ef4444; padding: 6px 12px; font-size: 13px; border: none; border-radius: 4px; color: #fff; cursor: pointer; }
+        .nav-btn { background: #0284c7; color: #fff; text-decoration: none; padding: 8px 15px; border-radius: 6px; font-size: 14px; display: inline-block; }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h2>👥 إدارة المستخدمين والصلاحيات</h2>
+    <a href="admin.html" class="nav-btn">العودة إلى لوحة التحكم الرئيسية</a>
+</div>
+
+<div class="card">
+    <p style="color: #94a3b8; margin-top: 0;">إنشاء حسابات جديدة للعمال، المستثمرين، أو المديرين، والتحكم بصلاحياتهم مباشرة.</p>
+    
+    <input type="email" id="new-user-email" placeholder="البريد الإلكتروني للمستخدم الجديد">
+    <input type="password" id="new-user-password" placeholder="كلمة المرور (6 أحرف على الأقل)">
+    <select id="new-user-role">
+        <option value="worker">عامل (Worker)</option>
+        <option value="boss">مستثمر (Boss)</option>
+        <option value="admin">مدير (Admin)</option>
+    </select>
+    <button onclick="createNewUser()">إنشاء مستخدم جديد وتسجيله في النظام</button>
+
+    <table style="margin-top: 20px;">
+        <thead>
+            <tr>
+                <th>البريد الإلكتروني</th>
+                <th>الصلاحية (الدور)</th>
+                <th>الإجراء</th>
+            </tr>
+        </thead>
+        <tbody id="users-page-body">
+            <tr><td colspan="3" style="color: #94a3b8;">جاري تحميل المستخدمين...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<script>
+    const SUPABASE_URL = 'https://fktettiegkmaijnokrwr.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_lZ6v_qG8aYXpwLY8VxPNfA_BfT87Jsh';
+    const { createClient } = supabase;
+    const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    async function checkAuth() {
+        const { data: { session } } = await db.auth.getSession();
+        if (!session) {
+            window.location.href = 'index.html';
+            return;
+        }
+        const { data: userData } = await db.from('users').select('role').eq('email', session.user.email).maybeSingle();
+        if (!userData || userData.role !== 'admin') {
+            alert('غير مصرح لك بدخول هذه الصفحة!');
+            window.location.href = 'index.html';
+            return;
+        }
+        document.body.style.display = 'block';
+        fetchUsers();
+    }
+
+    async function fetchUsers() {
+        const { data, error } = await db.from('users').select('*').order('email', { ascending: true });
+        const tbody = document.getElementById('users-page-body');
+        tbody.innerHTML = '';
+
+        if (error) {
+            tbody.innerHTML = `<tr><td colspan="3" style="color: #f87171;">خطأ في جلب المستخدمين: ${error.message}</td></tr>`;
+            return;
+        }
+
+        if (data && data.length > 0) {
+            data.forEach(user => {
+                tbody.innerHTML += `<tr>
+                    <td>${user.email}</td>
+                    <td style="font-weight: bold; color: #38bdf8;">${user.role}</td>
+                    <td>
+                        <button class="btn-delete" onclick="deleteUser('${user.email}')">حذف الصلاحية</button>
+                    </td>
+                </tr>`;
+            });
+        } else {
+            tbody.innerHTML = `<tr><td colspan="3" style="color: #94a3b8;">لا توجد مستخدمين مسجلين</td></tr>`;
+        }
+    }
+
+    async function createNewUser() {
+        const email = document.getElementById('new-user-email').value.trim();
+        const password = document.getElementById('new-user-password').value.trim();
+        const role = document.getElementById('new-user-role').value;
+
+        if (!email || !password) {
+            alert('الرجاء إدخال البريد الإلكتروني وكلمة المرور');
+            return;
+        }
+
+        const { error: authError } = await db.auth.signUp({ email, password });
+        if (authError) {
+            alert('فشل إنشاء الحساب: ' + authError.message);
+            return;
+        }
+
+        const { error: dbError } = await db.from('users').insert([{ email, role }]);
+        if (dbError) {
+            alert('تم إنشاء الحساب لكن فشل تسجيل الصلاحية: ' + dbError.message);
+        } else {
+            alert('تم إنشاء المستخدم وصلاحيته بنجاح!');
+            document.getElementById('new-user-email').value = '';
+            document.getElementById('new-user-password').value = '';
+            fetchUsers();
+        }
+    }
+
+    async function deleteUser(email) {
+        if (confirm(`هل أنت متأكد من حذف صلاحية المستخدم "${email}"؟`)) {
+            const { error } = await db.from('users').delete().eq('email', email);
+            if (error) alert('فشل الحذف: ' + error.message);
+            else fetchUsers();
+        }
+    }
+
+    db.channel('users-page-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, () => {
+        fetchUsers();
+    }).subscribe();
+
+    checkAuth();
+</script>
+</body>
+</html>

@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>إدارة المصروفات التشغيلية - إدارة الشركة</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: Tahoma, sans-serif; background: #0f172a; color: #fff; margin: 0; padding: 20px; display: none; }
+        .header { background: #1e293b; padding: 15px 20px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+        h2 { color: #38bdf8; margin: 0; }
+        .card { background: #1e293b; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); border: 2px solid #0284c7; }
+        input { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #475569; border-radius: 6px; background: #0f172a; color: #fff; box-sizing: border-box; }
+        button { background: #0284c7; border: none; padding: 12px 20px; border-radius: 6px; color: #fff; font-size: 16px; cursor: pointer; width: 100%; margin-top: 10px; }
+        button:hover { background: #0369a1; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { border: 1px solid #475569; padding: 10px; text-align: center; font-size: 14px; }
+        th { background: #334155; color: #38bdf8; }
+        .btn-delete { background: #ef4444; padding: 6px 12px; font-size: 13px; border: none; border-radius: 4px; color: #fff; cursor: pointer; }
+        .nav-btn { background: #0284c7; color: #fff; text-decoration: none; padding: 8px 15px; border-radius: 6px; font-size: 14px; display: inline-block; }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h2>💸 إدارة المصروفات التشغيلية والنثرية</h2>
+    <a href="admin.html" class="nav-btn">العودة إلى لوحة التحكم الرئيسية</a>
+</div>
+
+<div class="card">
+    <p style="color: #94a3b8; margin-top: 0;">تسجيل المصاريف اليومية للشركة (مثل النقل، الصيانة، الفواتير) لحساب صافي الأرباح الحقيقي بدقة.</p>
+    
+    <input type="text" id="expense-title" placeholder="وصف المصروف (مثال: فاتورة نقل بضاعة، صيانة...)">
+    <input type="number" id="expense-amount" placeholder="قيمة المصروف (دج)">
+    <button onclick="addExpense()">إضافة وتسجيل المصروف</button>
+
+    <table style="margin-top: 20px;">
+        <thead>
+            <tr>
+                <th>وصف المصروف</th>
+                <th>المبلغ</th>
+                <th>التاريخ والوقت</th>
+                <th>الإجراء</th>
+            </tr>
+        </thead>
+        <tbody id="expenses-page-body">
+            <tr><td colspan="4" style="color: #94a3b8;">جاري تحميل المصروفات...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<script>
+    const SUPABASE_URL = 'https://fktettiegkmaijnokrwr.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_lZ6v_qG8aYXpwLY8VxPNfA_BfT87Jsh';
+    const { createClient } = supabase;
+    const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    async function checkAuth() {
+        const { data: { session } } = await db.auth.getSession();
+        if (!session) {
+            window.location.href = 'index.html';
+            return;
+        }
+        const { data: userData } = await db.from('users').select('role').eq('email', session.user.email).maybeSingle();
+        if (!userData || userData.role !== 'admin') {
+            alert('غير مصرح لك بدخول هذه الصفحة!');
+            window.location.href = 'index.html';
+            return;
+        }
+        document.body.style.display = 'block';
+        fetchExpenses();
+    }
+
+    async function fetchExpenses() {
+        const { data, error } = await db.from('expenses').select('*').order('id', { ascending: false });
+        const tbody = document.getElementById('expenses-page-body');
+        tbody.innerHTML = '';
+
+        if (error) {
+            tbody.innerHTML = `<tr><td colspan="4" style="color: #f87171;">خطأ في جلب المصروفات (تأكد من وجود جدول expenses): ${error.message}</td></tr>`;
+            return;
+        }
+
+        if (data && data.length > 0) {
+            data.forEach(exp => {
+                const dateStr = exp.created_at ? new Date(exp.created_at).toLocaleString() : '-';
+                tbody.innerHTML += `<tr>
+                    <td>${exp.title || ''}</td>
+                    <td style="color: #f87171; font-weight: bold;">${exp.amount || 0} دج</td>
+                    <td>${dateStr}</td>
+                    <td>
+                        <button class="btn-delete" onclick="deleteExpense(${exp.id})">حذف</button>
+                    </td>
+                </tr>`;
+            });
+        } else {
+            tbody.innerHTML = `<tr><td colspan="4" style="color: #94a3b8;">لا توجد مصروفات مسجلة حالياً</td></tr>`;
+        }
+    }
+
+    async function addExpense() {
+        const title = document.getElementById('expense-title').value.trim();
+        const amount = Number(document.getElementById('expense-amount').value);
+
+        if (!title || isNaN(amount) || amount <= 0) {
+            alert('الرجاء إدخال وصف صحيح للمصروف ومبلغ أكبر من الصفر');
+            return;
+        }
+
+        const { error } = await db.from('expenses').insert([{ title, amount }]);
+        if (error) {
+            alert('فشل حفظ المصروف: ' + error.message);
+        } else {
+            alert('تم تسجيل المصروف بنجاح!');
+            document.getElementById('expense-title').value = '';
+            document.getElementById('expense-amount').value = '';
+            fetchExpenses();
+        }
+    }
+
+    async function deleteExpense(id) {
+        if (confirm('هل أنت متأكد من حذف هذا المصروف؟')) {
+            const { error } = await db.from('expenses').delete().eq('id', id);
+            if (error) alert('فشل الحذف: ' + error.message);
+            else fetchExpenses();
+        }
+    }
+
+    db.channel('expenses-page-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'expenses' }, () => {
+        fetchExpenses();
+    }).subscribe();
+
+    checkAuth();
+</script>
+</body>
+</html>

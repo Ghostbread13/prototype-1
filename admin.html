@@ -29,6 +29,9 @@
 <div class="header">
     <h2>لوحة تحكم المحرر (Admin)</h2>
     <div style="display: flex; gap: 10px; align-items: center;">
+      <a href="users_management.html" class="nav-btn" style="background: #7c3aed;">👥 إدارة المستخدمين</a>
+
+      <a href="expenses.html" class="nav-btn" style="background: #0284c7;">💸 إدارة المصروفات</a>
         <a href="sales_history.html" class="nav-btn">سجل المبيعات والتقارير</a>
         <button class="logout-btn" onclick="logout()">تسجيل الخروج</button>
     </div>
@@ -62,30 +65,6 @@
 </div>
 
 <!-- إدارة المستخدمين والصلاحيات -->
-<div class="card">
-    <h3>إدارة المستخدمين والصلاحيات</h3>
-    <input type="email" id="new-user-email" placeholder="البريد الإلكتروني للمستخدم الجديد">
-    <input type="password" id="new-user-password" placeholder="كلمة المرور (6 أحرف على الأقل)">
-    <select id="new-user-role">
-        <option value="worker">عامل (Worker)</option>
-        <option value="boss">مستثمر (Boss)</option>
-        <option value="admin">مدير (Admin)</option>
-    </select>
-    <button onclick="createNewUser()" style="background: #7c3aed;">إنشاء مستخدم جديد وتسجيله في النظام</button>
-
-    <table style="margin-top: 20px;">
-        <thead>
-            <tr>
-                <th>البريد الإلكتروني</th>
-                <th>الصلاحية (الدور)</th>
-                <th>الإجراءات</th>
-            </tr>
-        </thead>
-        <tbody id="users-table-body">
-            <tr><td colspan="3" style="color: #94a3b8;">جاري تحميل المستخدمين...</td></tr>
-        </tbody>
-    </table>
-</div>
 
 <!-- إضافة قطعة جديدة للمخزون -->
 <div class="card">
