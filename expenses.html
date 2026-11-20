@@ -1,46 +1,101 @@
-<!DOCTYPE html><!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>إدارة المصروفات التشغيلية - إدارة الشركة</title>
+    <title>إدارة وتقارير المصروفات التشغيلية - إدارة الشركة</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         body { font-family: Tahoma, sans-serif; background: #0f172a; color: #fff; margin: 0; padding: 20px; display: none; }
-        .header { background: #1e293b; padding: 15px 20px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
-        h2 { color: #38bdf8; margin: 0; }
-        .card { background: #1e293b; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); border: 2px solid #0284c7; }
-        input { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #475569; border-radius: 6px; background: #0f172a; color: #fff; box-sizing: border-box; }
-        button { background: #0284c7; border: none; padding: 12px 20px; border-radius: 6px; color: #fff; font-size: 16px; cursor: pointer; width: 100%; margin-top: 10px; }
-        button:hover { background: #0369a1; }
-        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        .header { background: #1e293b; padding: 15px 20px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); flex-wrap: wrap; gap: 10px; }
+        h2, h3 { color: #38bdf8; margin: 0; }
+        .card { background: #1e293b; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); border: 1px solid #334155; }
+        .form-grid { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+        .form-grid input { flex: 1; min-width: 200px; padding: 12px; border: 1px solid #475569; border-radius: 6px; background: #0f172a; color: #fff; box-sizing: border-box; }
+        .btn { border: none; padding: 10px 16px; border-radius: 6px; color: #fff; font-size: 14px; cursor: pointer; text-decoration: none; display: inline-block; }
+        .btn-add { background: #0284c7; font-size: 15px; padding: 12px 24px; }
+        .btn-add:hover { background: #0369a1; }
+        .btn-csv { background: #059669; }
+        .btn-csv:hover { background: #047857; }
+        .btn-pdf { background: #0284c7; }
+        .btn-pdf:hover { background: #0369a1; }
+        .btn-back { background: #475569; }
+        .btn-back:hover { background: #334155; }
+        .btn-delete { background: #ef4444; padding: 6px 12px; font-size: 13px; border: none; border-radius: 4px; color: #fff; cursor: pointer; }
+        .btn-delete:hover { background: #dc2626; }
+
+        .stats { display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap; }
+        .stat-box { background: #0f172a; padding: 15px; border-radius: 8px; flex: 1; min-width: 200px; text-align: center; border: 1px solid #334155; }
+        .stat-box span { display: block; color: #94a3b8; font-size: 13px; margin-bottom: 5px; }
+        .stat-box strong { font-size: 20px; color: #f87171; }
+
+        .filter-container { display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap; }
+        .filter-container input { flex: 1; min-width: 150px; padding: 10px; border: 1px solid #475569; border-radius: 6px; background: #0f172a; color: #fff; box-sizing: border-box; }
+
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
         th, td { border: 1px solid #475569; padding: 10px; text-align: center; font-size: 14px; }
         th { background: #334155; color: #38bdf8; }
-        .btn-delete { background: #ef4444; padding: 6px 12px; font-size: 13px; border: none; border-radius: 4px; color: #fff; cursor: pointer; width: auto; margin: 0; }
-        .nav-btn { background: #0284c7; color: #fff; text-decoration: none; padding: 8px 15px; border-radius: 6px; font-size: 14px; display: inline-block; }
+
+        /* تنسيق مخصص للطباعة وحفظ PDF */
+        @media print {
+            body { background: #fff !important; color: #000 !important; padding: 0; display: block !important; }
+            .header, .card { background: #fff !important; box-shadow: none !important; border: none !important; padding: 0; }
+            .no-print { display: none !important; }
+            h2, h3 { color: #000 !important; margin-bottom: 15px; }
+            th { background: #f1f5f9 !important; color: #000 !important; border: 1px solid #000; }
+            td { color: #000 !important; border: 1px solid #000; }
+            .stat-box { background: #f8fafc !important; border: 1px solid #000 !important; }
+            .stat-box strong, .stat-box span { color: #000 !important; }
+        }
     </style>
 </head>
 <body>
 
 <div class="header">
-    <h2>💸 إدارة المصروفات التشغيلية والنثرية</h2>
-    <a href="admin.html" class="nav-btn">العودة إلى لوحة التحكم الرئيسية</a>
+    <h2>💸 إدارة وتقارير المصروفات التشغيلية</h2>
+    <div class="no-print" style="display: flex; gap: 10px; flex-wrap: wrap;">
+        <button class="btn btn-csv" onclick="downloadExpensesTXT()">تحميل تقرير TXT</button>
+        <button class="btn btn-pdf" onclick="window.print()">طباعة / حفظ PDF</button>
+        <a href="admin.html" class="btn btn-back">العودة للوحة التحكم</a>
+    </div>
 </div>
 
-<div class="card">
-    <p style="color: #94a3b8; margin-top: 0;">تسجيل المصاريف اليومية للشركة لحساب صافي الأرباح الحقيقي بدقة.</p>
-    
-    <input type="text" id="expense-title" placeholder="وصف المصروف (مثال: فاتورة نقل بضاعة، صيانة...)">
-    <input type="number" id="expense-amount" placeholder="قيمة المصروف (دج)">
-    <button onclick="addExpense()">إضافة وتسجيل المصروف</button>
+<!-- قسم إضافة مصروف جديد (يختفي عند الطباعة) -->
+<div class="card no-print" style="border: 2px solid #0284c7;">
+    <h3>تسجيل مصروف جديد</h3>
+    <div class="form-grid">
+        <input type="text" id="expense-title" placeholder="وصف المصروف (مثال: نقل بضاعة، تغليف، صيانة...)">
+        <input type="number" id="expense-amount" placeholder="المبلغ (دج)">
+        <button class="btn btn-add" onclick="addExpense()">إضافة المصروف ➕</button>
+    </div>
+</div>
 
-    <table style="margin-top: 20px;">
+<!-- قسم الإحصائيات والفلترة والجدول -->
+<div class="card">
+    <div class="stats">
+        <div class="stat-box">
+            <span>إجمالي المصروفات المعروضة</span>
+            <strong id="total-expenses-sum">0 دج</strong>
+        </div>
+        <div class="stat-box">
+            <span>عدد بنود المصروفات</span>
+            <strong id="total-expenses-count" style="color: #38bdf8;">0</strong>
+        </div>
+    </div>
+
+    <div class="filter-container no-print">
+        <input type="text" id="search-expense" placeholder="ابحث بوصف المصروف..." onkeyup="filterExpenses()">
+        <input type="date" id="exp-date-from" onchange="filterExpenses()" title="من تاريخ">
+        <input type="date" id="exp-date-to" onchange="filterExpenses()" title="إلى تاريخ">
+    </div>
+
+    <table>
         <thead>
             <tr>
                 <th>وصف المصروف</th>
                 <th>المبلغ</th>
                 <th>التاريخ والوقت</th>
-                <th>الإجراء</th>
+                <th class="no-print">الإجراء</th>
             </tr>
         </thead>
         <tbody id="expenses-page-body">
@@ -54,6 +109,9 @@
     const SUPABASE_ANON_KEY = 'sb_publishable_lZ6v_qG8aYXpwLY8VxPNfA_BfT87Jsh';
     const { createClient } = supabase;
     const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    let allExpensesData = [];
+    let filteredExpensesData = [];
 
     async function checkAuth() {
         const { data: { session } } = await db.auth.getSession();
@@ -71,33 +129,61 @@
         fetchExpenses();
     }
 
-    // جلب المصروفات من جدول costs
     async function fetchExpenses() {
-        const { data, error } = await db.from('costs').select('*').order('id', { ascending: false });
-        const tbody = document.getElementById('expenses-page-body');
-        tbody.innerHTML = '';
-
+        const { data, error } = await db.from('costs').select('*').order('created_at', { ascending: false });
         if (error) {
-            tbody.innerHTML = `<tr><td colspan="4" style="color: #f87171;">خطأ: ${error.message}</td></tr>`;
+            document.getElementById('expenses-page-body').innerHTML = `<tr><td colspan="4" style="color: #f87171;">خطأ: ${error.message}</td></tr>`;
             return;
         }
+        allExpensesData = data || [];
+        filterExpenses();
+    }
 
-        if (data && data.length > 0) {
+    function filterExpenses() {
+        const query = document.getElementById('search-expense').value.toLowerCase();
+        const dateFrom = document.getElementById('exp-date-from').value;
+        const dateTo = document.getElementById('exp-date-to').value;
+
+        filteredExpensesData = allExpensesData.filter(item => {
+            const matchTitle = (item.title || '').toLowerCase().includes(query);
+            let matchDate = true;
+            if (item.created_at) {
+                const itemDate = item.created_at.slice(0, 10);
+                if (dateFrom && itemDate < dateFrom) matchDate = false;
+                if (dateTo && itemDate > dateTo) matchDate = false;
+            }
+            return matchTitle && matchDate;
+        });
+
+        renderExpenses(filteredExpensesData);
+    }
+
+    function renderExpenses(data) {
+        const tbody = document.getElementById('expenses-page-body');
+        tbody.innerHTML = '';
+        let totalSum = 0;
+
+        if (data.length > 0) {
             data.forEach(item => {
+                const price = Number(item.price) || 0;
+                totalSum += price;
                 const dateStr = item.created_at ? new Date(item.created_at).toLocaleString('ar-DZ') : '-';
+
                 tbody.innerHTML += `<tr>
                     <td>${item.title || ''}</td>
-                    <td style="color: #f87171; font-weight: bold;">${Number(item.price || 0).toLocaleString()} دج</td>
+                    <td style="color: #f87171; font-weight: bold;">${price.toLocaleString()} دج</td>
                     <td style="font-size: 12px;">${dateStr}</td>
-                    <td><button class="btn-delete" onclick="deleteExpense(${item.id})">حذف</button></td>
+                    <td class="no-print"><button class="btn-delete" onclick="deleteExpense(${item.id})">حذف</button></td>
                 </tr>`;
             });
         } else {
-            tbody.innerHTML = `<tr><td colspan="4" style="color: #94a3b8;">لا توجد مصروفات مسجلة حالياً</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="4" style="color: #94a3b8;">لا توجد مصروفات مطابقة</td></tr>`;
         }
+
+        document.getElementById('total-expenses-sum').textContent = totalSum.toLocaleString() + ' دج';
+        document.getElementById('total-expenses-count').textContent = data.length;
     }
 
-    // إضافة مصروف جديد إلى جدول costs
     async function addExpense() {
         const title = document.getElementById('expense-title').value.trim();
         const price = Number(document.getElementById('expense-amount').value);
@@ -108,24 +194,49 @@
         }
 
         const { error } = await db.from('costs').insert([{ title: title, price: price }]);
-        
         if (error) {
             alert('فشل حفظ المصروف: ' + error.message);
         } else {
-            alert('تم تسجيل المصروف بنجاح!');
             document.getElementById('expense-title').value = '';
             document.getElementById('expense-amount').value = '';
             fetchExpenses();
         }
     }
 
-    // حذف مصروف من جدول costs
     async function deleteExpense(id) {
         if (confirm('هل أنت متأكد من حذف هذا المصروف؟')) {
             const { error } = await db.from('costs').delete().eq('id', id);
             if (error) alert('فشل الحذف: ' + error.message);
             else fetchExpenses();
         }
+    }
+
+    function downloadExpensesTXT() {
+        if (filteredExpensesData.length === 0) {
+            alert('لا توجد بيانات لتحميلها!');
+            return;
+        }
+
+        let content = "=== تقرير المصروفات التشغيلية ===\n";
+        content += "تاريخ الاستخراج: " + new Date().toLocaleString('ar-DZ') + "\n";
+        content += "=========================================\n\n";
+
+        let sum = 0;
+        filteredExpensesData.forEach((item, index) => {
+            const price = Number(item.price) || 0;
+            sum += price;
+            const dateStr = item.created_at ? new Date(item.created_at).toLocaleString('ar-DZ') : '-';
+            content += `${index + 1}. البيان: ${item.title} | المبلغ: ${price.toLocaleString()} دج | التاريخ: ${dateStr}\n`;
+        });
+
+        content += "\n=========================================\n";
+        content += `إجمالي المصروفات في هذا التقرير: ${sum.toLocaleString()} دج\n`;
+
+        const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `تقرير_المصروفات_${new Date().toISOString().slice(0,10)}.txt`;
+        link.click();
     }
 
     db.channel('costs-page-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'costs' }, () => {
