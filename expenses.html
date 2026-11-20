@@ -143,6 +143,7 @@
 
     let allExpensesData = [];
     let filteredExpensesData = [];
+    let currentUserEmail = '';
 
     function showToast(message, type = 'success') {
         const container = document.getElementById('toast-container');
@@ -160,19 +161,48 @@
         }, 3000);
     }
 
-    async function checkAuth() {
+    async function forceKickOut(reason = 'غير مصرح لك بدخول هذه الصفحة أو تم سحب صلاحيتك!') {
+        alert(reason);
+        await db.auth.signOut();
+        window.location.href = 'index.html';
+    }
+
+    async function checkCurrentUserRole() {
         const { data: { session } } = await db.auth.getSession();
-        if (!session) {
+        if (!session || !session.user || !session.user.email) {
             window.location.href = 'index.html';
-            return;
+            return false;
         }
-        const { data: userData } = await db.from('users').select('role').eq('email', session.user.email).maybeSingle();
-        if (!userData || userData.role !== 'admin') {
-            alert('غير مصرح لك بدخول هذه الصفحة!');
-            window.location.href = 'index.html';
-            return;
+        currentUserEmail = session.user.email;
+        const { data: userData, error } = await db
+            .from('users')
+            .select('role')
+            .eq('email', currentUserEmail)
+            .maybeSingle();
+
+        if (error || !userData || userData.role !== 'admin') {
+            await forceKickOut('غير مصرح لك بدخول هذه الصفحة أو تم سحب صلاحيتك!');
+            return false;
         }
+        return true;
+    }
+
+    function watchCurrentUserRole() {
+        db.channel('expenses-role-watch')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, async (payload) => {
+                const changedEmail = payload.new?.email || payload.old?.email;
+                if (changedEmail && currentUserEmail && changedEmail.toLowerCase() === currentUserEmail.toLowerCase()) {
+                    await checkCurrentUserRole();
+                }
+            })
+            .subscribe();
+    }
+
+    async function checkAuth() {
+        const isAllowed = await checkCurrentUserRole();
+        if (!isAllowed) return;
         document.body.style.display = 'block';
+        watchCurrentUserRole();
         fetchExpenses();
     }
 
@@ -232,6 +262,7 @@
     }
 
     async function addExpense() {
+        if (!(await checkCurrentUserRole())) return;
         const title = document.getElementById('expense-title').value.trim();
         const price = Number(document.getElementById('expense-amount').value);
 
@@ -252,6 +283,7 @@
     }
 
     async function deleteExpense(id) {
+        if (!(await checkCurrentUserRole())) return;
         if (confirm('هل أنت متأكد من حذف هذا المصروف؟')) {
             const { error } = await db.from('costs').delete().eq('id', id);
             if (error) showToast('فشل الحذف: ' + error.message, 'error');
