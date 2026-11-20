@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>سجل المبيعات والتقارير - إدارة الشركة</title>
+    <title>سجل المبيعات والتقارير المتقدمة</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         body { font-family: Tahoma, sans-serif; background: #0f172a; color: #fff; margin: 0; padding: 20px; }
@@ -13,43 +13,28 @@
         .actions-bar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 15px; }
         .btn { border: none; padding: 10px 16px; border-radius: 6px; color: #fff; font-size: 14px; cursor: pointer; text-decoration: none; display: inline-block; }
         .btn-back { background: #475569; }
-        .btn-back:hover { background: #334155; }
         .btn-csv { background: #059669; }
-        .btn-csv:hover { background: #047857; }
         .btn-pdf { background: #0284c7; }
-        .btn-pdf:hover { background: #0369a1; }
-        .filter-container { display: flex; gap: 10px; margin-bottom: 15px; }
-        input, select { width: 100%; padding: 10px; border: 1px solid #475569; border-radius: 6px; background: #0f172a; color: #fff; box-sizing: border-box; }
-        .stats { display: flex; gap: 15px; margin-bottom: 20px; }
-        .stat-box { background: #0f172a; padding: 15px; border-radius: 8px; flex: 1; text-align: center; border: 1px solid #334155; }
+        .filter-container { display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap; }
+        input, select { flex: 1; min-width: 150px; padding: 10px; border: 1px solid #475569; border-radius: 6px; background: #0f172a; color: #fff; box-sizing: border-box; }
+        .stats { display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap; }
+        .stat-box { background: #0f172a; padding: 15px; border-radius: 8px; flex: 1; min-width: 200px; text-align: center; border: 1px solid #334155; }
         .stat-box span { display: block; color: #94a3b8; font-size: 13px; margin-bottom: 5px; }
         .stat-box strong { font-size: 20px; color: #4ade80; }
         table { width: 100%; border-collapse: collapse; margin-top: 10px; }
         th, td { border: 1px solid #475569; padding: 10px; text-align: center; font-size: 14px; }
         th { background: #334155; color: #38bdf8; }
-
-        /* تنسيق مخصص للطباعة وحفظ PDF */
-        @media print {
-            body { background: #fff; color: #000; padding: 0; }
-            .header, .card { background: #fff; box-shadow: none; border: none; padding: 0; }
-            .no-print { display: none !important; }
-            h2, h3 { color: #000; margin-bottom: 15px; }
-            th { background: #f1f5f9 !important; color: #000 !important; border: 1px solid #000; }
-            td { color: #000 !important; border: 1px solid #000; }
-            .stat-box { background: #f8fafc; border: 1px solid #000; }
-            .stat-box strong { color: #000; }
-        }
+        @media print { .no-print { display: none !important; } }
     </style>
 </head>
 <body>
 
 <div class="header">
-    <h2>سجل المبيعات الفعلي والتقارير</h2>
+    <h2>سجل المبيعات والتقارير المتقدمة</h2>
     <div class="actions-bar no-print" style="margin: 0;">
-        <button class="btn btn-csv" onclick="downloadTXT()">تحميل كملف نصي (TXT / CSV)</button>
-        <button class="btn btn-pdf" onclick="window.print()">حفظ كـ PDF / طباعة</button>
-      <button class="btn btn-back" onclick="history.back()">الرجوع</button>
-
+        <button class="btn btn-csv" onclick="downloadTXT()">تحميل تقارير TXT</button>
+        <button class="btn btn-pdf" onclick="window.print()">طباعة / PDF</button>
+        <button class="btn btn-back" onclick="history.back()">الرجوع</button>
     </div>
 </div>
 
@@ -65,11 +50,14 @@
         </div>
     </div>
 
+    <!-- فلترة متقدمة تشمل التواريخ -->
     <div class="filter-container no-print">
-        <input type="text" id="search-sales" placeholder="ابحث باسم القطعة أو إيميل العامل..." onkeyup="filterSales()">
+        <input type="text" id="search-sales" placeholder="ابحث بالقطعة أو إيميل العامل..." onkeyup="filterSales()">
         <select id="branch-sales-filter" onchange="filterSales()">
             <option value="">جميع الفروع</option>
         </select>
+        <input type="date" id="date-from" onchange="filterSales()" title="من تاريخ">
+        <input type="date" id="date-to" onchange="filterSales()" title="إلى تاريخ">
     </div>
 
     <table>
@@ -77,9 +65,9 @@
             <tr>
                 <th>القطعة</th>
                 <th>الفرع</th>
-                <th>الكمية المباعة</th>
-                <th>المبلغ الإجمالي</th>
-                <th>البائع (العامل)</th>
+                <th>الكمية</th>
+                <th>المبلغ</th>
+                <th>البائع</th>
                 <th>التاريخ والوقت</th>
             </tr>
         </thead>
@@ -92,34 +80,15 @@
 <script>
     const SUPABASE_URL = 'https://fktettiegkmaijnokrwr.supabase.co';
     const SUPABASE_ANON_KEY = 'sb_publishable_lZ6v_qG8aYXpwLY8VxPNfA_BfT87Jsh';
-
     const { createClient } = supabase;
     const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     let allSalesData = [];
     let currentFilteredData = [];
-    async function checkAuth() {
-        const { data: { session } } = await db.auth.getSession();
-        if (!session) {
-            window.location.href = 'index.html';
-            return;
-        }
-        fetchSales();
-    }
-    // واستبدل fetchSales(); في آخر الملف بـ checkAuth();
 
     async function fetchSales() {
-        const { data, error } = await db
-            .from('sales')
-            .select('*')
-            .order('created_at', { ascending: false });
-
-        if (error) {
-            document.getElementById('sales-table-body').innerHTML = 
-                `<tr><td colspan="6" style="color: #f87171;">خطأ في جلب البيانات: ${error.message}</td></tr>`;
-            return;
-        }
-
+        const { data, error } = await db.from('sales').select('*').order('created_at', { ascending: false });
+        if (error) return;
         allSalesData = data || [];
         currentFilteredData = allSalesData;
         populateBranches();
@@ -129,9 +98,7 @@
     function populateBranches() {
         const select = document.getElementById('branch-sales-filter');
         const branches = [...new Set(allSalesData.map(s => s.branch))].filter(Boolean);
-        branches.forEach(b => {
-            select.innerHTML += `<option value="${b}">${b}</option>`;
-        });
+        branches.forEach(b => select.innerHTML += `<option value="${b}">${b}</option>`);
     }
 
     function renderSales(data) {
@@ -157,7 +124,6 @@
         } else {
             tbody.innerHTML = `<tr><td colspan="6" style="color: #94a3b8;">لا توجد مبيعات مطابقة</td></tr>`;
         }
-
         document.getElementById('total-revenue').textContent = totalRev.toLocaleString() + ' دج';
         document.getElementById('total-count').textContent = data.length;
     }
@@ -165,40 +131,34 @@
     function filterSales() {
         const query = document.getElementById('search-sales').value.toLowerCase();
         const branch = document.getElementById('branch-sales-filter').value;
+        const dateFrom = document.getElementById('date-from').value;
+        const dateTo = document.getElementById('date-to').value;
 
         currentFilteredData = allSalesData.filter(s => {
-            const matchText = (s.item_name || '').toLowerCase().includes(query) || 
-                              (s.worker_email || '').toLowerCase().includes(query);
+            const matchText = (s.item_name || '').toLowerCase().includes(query) || (s.worker_email || '').toLowerCase().includes(query);
             const matchBranch = branch === '' || s.branch === branch;
-            return matchText && matchBranch;
+            
+            let matchDate = true;
+            if (s.created_at) {
+                const saleDate = s.created_at.slice(0, 10);
+                if (dateFrom && saleDate < dateFrom) matchDate = false;
+                if (dateTo && saleDate > dateTo) matchDate = false;
+            }
+            return matchText && matchBranch && matchDate;
         });
 
         renderSales(currentFilteredData);
     }
 
-    // دالة تحميل السجل كملف نصي منظم
     function downloadTXT() {
-        if (currentFilteredData.length === 0) {
-            alert('لا توجد بيانات لتحميلها!');
-            return;
-        }
-
-        let content = "=== تقرير سجل المبيعات ===\n";
-        content += "تاريخ الاستخراج: " + new Date().toLocaleString('ar-DZ') + "\n";
-        content += "=========================================\n\n";
-
+        if (currentFilteredData.length === 0) { alert('لا توجد بيانات لتحميلها!'); return; }
+        let content = "=== تقرير المبيعات المتقدم ===\n\n";
         let sum = 0;
-        currentFilteredData.forEach((s, index) => {
-            const price = Number(s.total_price) || 0;
-            sum += price;
-            const dateStr = s.created_at ? new Date(s.created_at).toLocaleString('ar-DZ') : '-';
-            content += `${index + 1}. القطعة: ${s.item_name} | الفرع: ${s.branch} | الكمية: ${s.quantity_sold} | الإجمالي: ${price} دج | البائع: ${s.worker_email} | التاريخ: ${dateStr}\n`;
+        currentFilteredData.forEach((s, i) => {
+            sum += Number(s.total_price) || 0;
+            content += `${i + 1}. قطعة: ${s.item_name} | الفرع: ${s.branch} | الكمية: ${s.quantity_sold} | المبلغ: ${s.total_price} دج | البائع: ${s.worker_email} | التاريخ: ${s.created_at}\n`;
         });
-
-        content += "\n=========================================\n";
-        content += `إجمالي المبيعات في هذا التقرير: ${sum.toLocaleString()} دج\n`;
-
-        // إنشاء الملف وتحميله
+        content += `\nالإجمالي الكلي: ${sum.toLocaleString()} دج\n`;
         const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
         const link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
@@ -208,6 +168,5 @@
 
     fetchSales();
 </script>
-
 </body>
 </html>

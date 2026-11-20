@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!DOCTYPE html><!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
@@ -16,7 +16,7 @@
         table { width: 100%; border-collapse: collapse; margin-top: 15px; }
         th, td { border: 1px solid #475569; padding: 10px; text-align: center; font-size: 14px; }
         th { background: #334155; color: #38bdf8; }
-        .btn-delete { background: #ef4444; padding: 6px 12px; font-size: 13px; border: none; border-radius: 4px; color: #fff; cursor: pointer; }
+        .btn-delete { background: #ef4444; padding: 6px 12px; font-size: 13px; border: none; border-radius: 4px; color: #fff; cursor: pointer; width: auto; margin: 0; }
         .nav-btn { background: #0284c7; color: #fff; text-decoration: none; padding: 8px 15px; border-radius: 6px; font-size: 14px; display: inline-block; }
     </style>
 </head>
@@ -28,7 +28,7 @@
 </div>
 
 <div class="card">
-    <p style="color: #94a3b8; margin-top: 0;">تسجيل المصاريف اليومية للشركة (مثل النقل، الصيانة، الفواتير) لحساب صافي الأرباح الحقيقي بدقة.</p>
+    <p style="color: #94a3b8; margin-top: 0;">تسجيل المصاريف اليومية للشركة لحساب صافي الأرباح الحقيقي بدقة.</p>
     
     <input type="text" id="expense-title" placeholder="وصف المصروف (مثال: فاتورة نقل بضاعة، صيانة...)">
     <input type="number" id="expense-amount" placeholder="قيمة المصروف (دج)">
@@ -71,11 +71,33 @@
         fetchExpenses();
     }
 
-        async function fetchExpenses() {
+    // جلب المصروفات من جدول costs
+    async function fetchExpenses() {
         const { data, error } = await db.from('costs').select('*').order('id', { ascending: false });
-        // ... باقي الكود
+        const tbody = document.getElementById('expenses-page-body');
+        tbody.innerHTML = '';
+
+        if (error) {
+            tbody.innerHTML = `<tr><td colspan="4" style="color: #f87171;">خطأ: ${error.message}</td></tr>`;
+            return;
+        }
+
+        if (data && data.length > 0) {
+            data.forEach(item => {
+                const dateStr = item.created_at ? new Date(item.created_at).toLocaleString('ar-DZ') : '-';
+                tbody.innerHTML += `<tr>
+                    <td>${item.title || ''}</td>
+                    <td style="color: #f87171; font-weight: bold;">${Number(item.price || 0).toLocaleString()} دج</td>
+                    <td style="font-size: 12px;">${dateStr}</td>
+                    <td><button class="btn-delete" onclick="deleteExpense(${item.id})">حذف</button></td>
+                </tr>`;
+            });
+        } else {
+            tbody.innerHTML = `<tr><td colspan="4" style="color: #94a3b8;">لا توجد مصروفات مسجلة حالياً</td></tr>`;
+        }
     }
 
+    // إضافة مصروف جديد إلى جدول costs
     async function addExpense() {
         const title = document.getElementById('expense-title').value.trim();
         const price = Number(document.getElementById('expense-amount').value);
@@ -97,45 +119,16 @@
         }
     }
 
+    // حذف مصروف من جدول costs
     async function deleteExpense(id) {
         if (confirm('هل أنت متأكد من حذف هذا المصروف؟')) {
             const { error } = await db.from('costs').delete().eq('id', id);
-            // ... باقي الكود
-        }
-    }
-
-
-    async function addExpense() {
-        const title = document.getElementById('expense-title').value.trim();
-        const price = Number(document.getElementById('expense-amount').value);
-
-        if (!title || isNaN(price) || price <= 0) {
-            alert('الرجاء إدخال وصف صحيح للمصروف ومبلغ أكبر من الصفر');
-            return;
-        }
-
-        // استخدام الحقل price تماماً كما هو موجود في جدول Supabase
-        const { error } = await db.from('expenses').insert([{ title: title, price: price }]);
-        
-        if (error) {
-            alert('فشل حفظ المصروف: ' + error.message);
-        } else {
-            alert('تم تسجيل المصروف بنجاح!');
-            document.getElementById('expense-title').value = '';
-            document.getElementById('expense-amount').value = '';
-            fetchExpenses();
-        }
-    }
-
-    async function deleteExpense(id) {
-        if (confirm('هل أنت متأكد من حذف هذا المصروف؟')) {
-            const { error } = await db.from('expenses').delete().eq('id', id);
             if (error) alert('فشل الحذف: ' + error.message);
             else fetchExpenses();
         }
     }
 
-    db.channel('expenses-page-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'expenses' }, () => {
+    db.channel('costs-page-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'costs' }, () => {
         fetchExpenses();
     }).subscribe();
 
@@ -143,4 +136,3 @@
 </script>
 </body>
 </html>
-
