@@ -34,7 +34,7 @@
 <div class="header">
     <div style="display: flex; align-items: center; gap: 15px;">
         <h2>متابعة المستثمر والتحليلات</h2>
-        <span class="view-badge">وضع العرض المباشر (View Only)</span>
+        <span class="view-badge">وضع العرض المباشر ( live )</span>
     </div>
     <div style="display: flex; gap: 10px; align-items: center;">
         <a href="sales_history.html" class="nav-btn">سجل المبيعات والتقارير</a>
@@ -48,6 +48,11 @@
         <p style="color: #94a3b8; margin: 0;">إجمالي رأس المال المستثمر</p>
         <h3 id="total-capital">0 دج</h3>
     </div>
+        <div class="stat-card">
+        <p style="color: #94a3b8; margin: 0;">إجمالي المصروفات التشغيلية</p>
+        <h3 id="total-expenses" style="color: #f87171;">0 دج</h3>
+    </div>
+
     <div class="stat-card">
         <p style="color: #94a3b8; margin: 0;">إجمالي المبيعات المحققة (الكاش)</p>
         <h3 id="total-revenue" style="color: #38bdf8;">0 دج</h3>
@@ -181,18 +186,26 @@
         updateCharts(branchQuantities);
     }
 
-    // جلب إجمالي المبيعات المحققة والأرباح الفعلية من جدول sales
-    async function fetchSalesStats() {
-        const { data, error } = await db.from('sales').select('*');
-        if (error) return;
+    // جلب الفواتير  وخصمها من الربح الفعلي وجلب إجمالي المبيعات المحققة والأرباح الفعلية من جدول
+       async function fetchSalesStats() {
+        const { data: salesData, error: salesError } = await db.from('sales').select('*');
+        const { data: costsData, error: costsError } = await db.from('costs').select('*');
+        if (salesError || costsError) return;
 
         let totalRevenue = 0;
-        let actualProfit = 0;
+        let grossActualProfit = 0;
+        let totalExpenses = 0;
 
-        if (data && data.length > 0) {
+        if (costsData && costsData.length > 0) {
+            costsData.forEach(cost => {
+                totalExpenses += Number(cost.price) || 0;
+            });
+        }
+
+        if (salesData && salesData.length > 0) {
             const { data: invData } = await db.from('inventory').select('name, buying_price');
-            
-            data.forEach(sale => {
+
+            salesData.forEach(sale => {
                 const rev = Number(sale.total_price) || 0;
                 totalRevenue += rev;
 
@@ -200,16 +213,20 @@
                 const buyPrice = matchedItem ? Number(matchedItem.buying_price) || 0 : 0;
                 const qtySold = Number(sale.quantity_sold) || 0;
 
-                actualProfit += (rev - (buyPrice * qtySold));
+                grossActualProfit += (rev - (buyPrice * qtySold));
             });
         }
 
+        const netActualProfit = grossActualProfit - totalExpenses;
+
         currentRevenue = totalRevenue;
-        currentActualProfit = actualProfit;
+        currentActualProfit = netActualProfit;
 
         document.getElementById('total-revenue').textContent = totalRevenue.toLocaleString() + ' دج';
-        document.getElementById('actual-profit').textContent = actualProfit.toLocaleString() + ' دج';
+        document.getElementById('total-expenses').textContent = totalExpenses.toLocaleString() + ' دج';
+        document.getElementById('actual-profit').textContent = netActualProfit.toLocaleString() + ' دج';
     }
+
 
     // جلب رأس المال
     async function loadInvestorCapital() {
