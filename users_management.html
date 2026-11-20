@@ -18,9 +18,40 @@
         th { background: #334155; color: #38bdf8; }
         .btn-delete { background: #ef4444; padding: 6px 12px; font-size: 13px; border: none; border-radius: 4px; color: #fff; cursor: pointer; }
         .nav-btn { background: #0284c7; color: #fff; text-decoration: none; padding: 8px 15px; border-radius: 6px; font-size: 14px; display: inline-block; }
+
+        /* نظام الإشعارات العائمة Toast */
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-width: 340px;
+        }
+        .toast {
+            padding: 12px 16px;
+            border-radius: 8px;
+            color: #fff;
+            font-size: 14px;
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+            animation: fadeInToast 0.25s ease;
+            border-right: 4px solid rgba(255, 255, 255, 0.4);
+        }
+        .toast-success { background: #059669; }
+        .toast-error { background: #dc2626; }
+        .toast-warning { background: #d97706; }
+
+        @keyframes fadeInToast {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
     </style>
 </head>
 <body>
+
+<div id="toast-container" class="toast-container"></div>
 
 <div class="header">
     <h2>👥 إدارة المستخدمين والصلاحيات</h2>
@@ -59,19 +90,66 @@
     const { createClient } = supabase;
     const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    async function checkAuth() {
+    let currentUserEmail = '';
+
+    function showToast(message, type = 'success') {
+        const container = document.getElementById('toast-container');
+        if (!container) return;
+
+        const toast = document.createElement('div');
+        toast.className = `toast toast-${type}`;
+        toast.textContent = message;
+        container.appendChild(toast);
+
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            toast.style.transition = 'opacity 0.3s ease';
+            setTimeout(() => toast.remove(), 300);
+        }, 3000);
+    }
+
+    async function forceKickOut(reason = 'غير مصرح لك بدخول هذه الصفحة أو تم سحب صلاحيتك!') {
+        alert(reason);
+        await db.auth.signOut();
+        window.location.href = 'index.html';
+    }
+
+    async function checkCurrentUserRole() {
         const { data: { session } } = await db.auth.getSession();
-        if (!session) {
+        if (!session || !session.user || !session.user.email) {
             window.location.href = 'index.html';
-            return;
+            return false;
         }
-        const { data: userData } = await db.from('users').select('role').eq('email', session.user.email).maybeSingle();
-        if (!userData || userData.role !== 'admin') {
-            alert('غير مصرح لك بدخول هذه الصفحة!');
-            window.location.href = 'index.html';
-            return;
+        currentUserEmail = session.user.email;
+        const { data: userData, error } = await db
+            .from('users')
+            .select('role')
+            .eq('email', currentUserEmail)
+            .maybeSingle();
+
+        if (error || !userData || userData.role !== 'admin') {
+            await forceKickOut('غير مصرح لك بدخول هذه الصفحة أو تم سحب صلاحيتك!');
+            return false;
         }
+        return true;
+    }
+
+    function watchCurrentUserRole() {
+        db.channel('users-role-watch')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, async (payload) => {
+                const changedEmail = payload.new?.email || payload.old?.email;
+                if (changedEmail && currentUserEmail && changedEmail.toLowerCase() === currentUserEmail.toLowerCase()) {
+                    await checkCurrentUserRole();
+                }
+            })
+            .subscribe();
+    }
+
+    async function checkAuth() {
+        const isAllowed = await checkCurrentUserRole();
+        if (!isAllowed) return;
         document.body.style.display = 'block';
+        watchCurrentUserRole();
         fetchUsers();
     }
 
@@ -101,26 +179,27 @@
     }
 
     async function createNewUser() {
+        if (!(await checkCurrentUserRole())) return;
         const email = document.getElementById('new-user-email').value.trim();
         const password = document.getElementById('new-user-password').value.trim();
         const role = document.getElementById('new-user-role').value;
 
         if (!email || !password) {
-            alert('الرجاء إدخال البريد الإلكتروني وكلمة المرور');
+            showToast('الرجاء إدخال البريد الإلكتروني وكلمة المرور', 'warning');
             return;
         }
 
         const { error: authError } = await db.auth.signUp({ email, password });
         if (authError) {
-            alert('فشل إنشاء الحساب: ' + authError.message);
+            showToast('فشل إنشاء الحساب: ' + authError.message, 'error');
             return;
         }
 
         const { error: dbError } = await db.from('users').insert([{ email, role }]);
         if (dbError) {
-            alert('تم إنشاء الحساب لكن فشل تسجيل الصلاحية: ' + dbError.message);
+            showToast('تم إنشاء الحساب لكن فشل تسجيل الصلاحية: ' + dbError.message, 'error');
         } else {
-            alert('تم إنشاء المستخدم وصلاحيته بنجاح!');
+            showToast('تم إنشاء المستخدم وصلاحيته بنجاح!', 'success');
             document.getElementById('new-user-email').value = '';
             document.getElementById('new-user-password').value = '';
             fetchUsers();
@@ -128,16 +207,23 @@
     }
 
     async function deleteUser(email) {
+        if (!(await checkCurrentUserRole())) return;
         if (confirm(`هل أنت متأكد من حذف صلاحية المستخدم "${email}"؟`)) {
             const { error } = await db.from('users').delete().eq('email', email);
-            if (error) alert('فشل الحذف: ' + error.message);
-            else fetchUsers();
+            if (error) {
+                showToast('فشل الحذف: ' + error.message, 'error');
+            } else {
+                showToast('تم حذف الصلاحية بنجاح', 'success');
+                fetchUsers();
+            }
         }
     }
 
-    db.channel('users-page-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, () => {
-        fetchUsers();
-    }).subscribe();
+    db.channel('users-page-changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, () => {
+            fetchUsers();
+        })
+        .subscribe();
 
     checkAuth();
 </script>

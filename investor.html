@@ -116,21 +116,51 @@
     let currentRevenue = 0;
     let currentActualProfit = 0;
     let currentExpectedProfit = 0;
+    let currentUserEmail = '';
+
+    async function forceKickOut(reason = 'غير مصرح لك بدخول لوحة المستثمر أو تم سحب صلاحيتك!') {
+        alert(reason);
+        await db.auth.signOut();
+        window.location.href = 'index.html';
+    }
+
+    async function checkCurrentUserRole() {
+        const { data: { session } } = await db.auth.getSession();
+        if (!session || !session.user || !session.user.email) {
+            window.location.href = 'index.html';
+            return false;
+        }
+        currentUserEmail = session.user.email;
+        const { data: userData, error } = await db
+            .from('users')
+            .select('role')
+            .eq('email', currentUserEmail)
+            .maybeSingle();
+
+        if (error || !userData || (userData.role !== 'boss' && userData.role !== 'admin')) {
+            await forceKickOut('غير مصرح لك بدخول لوحة المستثمر أو تم سحب صلاحيتك!');
+            return false;
+        }
+        return true;
+    }
+
+    function watchCurrentUserRole() {
+        db.channel('investor-role-watch')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, async (payload) => {
+                const changedEmail = payload.new?.email || payload.old?.email;
+                if (changedEmail && currentUserEmail && changedEmail.toLowerCase() === currentUserEmail.toLowerCase()) {
+                    await checkCurrentUserRole();
+                }
+            })
+            .subscribe();
+    }
 
     // 1. حارس الأمان للمستثمر
     async function checkAuth() {
-        const { data: { session } } = await db.auth.getSession();
-        if (!session) {
-            window.location.href = 'index.html';
-            return;
-        }
-        const { data: userData } = await db.from('users').select('role').eq('email', session.user.email).maybeSingle();
-        if (!userData || (userData.role !== 'boss' && userData.role !== 'admin')) {
-            alert('غير مصرح لك بدخول لوحة المستثمر!');
-            window.location.href = 'index.html';
-            return;
-        }
+        const isAllowed = await checkCurrentUserRole();
+        if (!isAllowed) return;
         document.body.style.display = 'block';
+        watchCurrentUserRole();
         loadAllData();
     }
 
@@ -186,8 +216,8 @@
         updateCharts(branchQuantities);
     }
 
-    // جلب الفواتير  وخصمها من الربح الفعلي وجلب إجمالي المبيعات المحققة والأرباح الفعلية من جدول
-       async function fetchSalesStats() {
+    // جلب الفواتير وخصمها من الربح الفعلي وجلب إجمالي المبيعات المحققة والأرباح الفعلية من جدول
+    async function fetchSalesStats() {
         const { data: salesData, error: salesError } = await db.from('sales').select('*');
         const { data: costsData, error: costsError } = await db.from('costs').select('*');
         if (salesError || costsError) return;
@@ -227,12 +257,11 @@
         document.getElementById('actual-profit').textContent = netActualProfit.toLocaleString() + ' دج';
     }
 
-
     // جلب رأس المال
     async function loadInvestorCapital() {
         try {
             const { data, error } = await db.from('settings').select('value').eq('key', '1').single();
-            if (data && data.value !== null) {
+            if (!error && data && data.value !== null) {
                 currentCapital = parseFloat(data.value) || 0;
                 document.getElementById('total-capital').textContent = currentCapital.toLocaleString() + ' دج';
             }
@@ -302,7 +331,16 @@
 
     // التحديث الفعلي (Realtime) لجميع التغييرات
     db.channel('investor-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public' }, () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory' }, () => {
+          loadAllData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sales' }, () => {
+          loadAllData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'costs' }, () => {
+          loadAllData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'settings' }, () => {
           loadAllData();
       })
       .subscribe();

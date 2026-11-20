@@ -136,23 +136,57 @@
         }, 3000);
     }
 
-    async function checkAuth() {
+    async function forceKickOut(reason = 'غير مصرح لك بدخول نقطة البيع أو تم سحب صلاحيتك!') {
+        alert(reason);
+        await db.auth.signOut();
+        window.location.href = 'index.html';
+    }
+
+    async function checkCurrentUserRole() {
         const { data: { session } } = await db.auth.getSession();
-        if (!session) { window.location.href = 'index.html'; return; }
-        const { data: userData } = await db.from('users').select('role').eq('email', session.user.email).maybeSingle();
-        if (!userData || (userData.role !== 'worker' && userData.role !== 'admin')) {
-            alert('غير مصرح لك بدخول نقطة البيع!');
+        if (!session || !session.user || !session.user.email) {
             window.location.href = 'index.html';
-            return;
+            return false;
         }
         currentWorkerEmail = session.user.email;
+        const { data: userData, error } = await db
+            .from('users')
+            .select('role')
+            .eq('email', currentWorkerEmail)
+            .maybeSingle();
+
+        if (error || !userData || (userData.role !== 'worker' && userData.role !== 'admin')) {
+            await forceKickOut('غير مصرح لك بدخول نقطة البيع أو تم سحب صلاحيتك!');
+            return false;
+        }
+        return true;
+    }
+
+    function watchCurrentUserRole() {
+        db.channel('worker-role-watch')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, async (payload) => {
+                const changedEmail = payload.new?.email || payload.old?.email;
+                if (changedEmail && currentWorkerEmail && changedEmail.toLowerCase() === currentWorkerEmail.toLowerCase()) {
+                    await checkCurrentUserRole();
+                }
+            })
+            .subscribe();
+    }
+
+    async function checkAuth() {
+        const isAllowed = await checkCurrentUserRole();
+        if (!isAllowed) return;
         document.body.style.display = 'block';
+        watchCurrentUserRole();
         fetchWorkerInventory();
     }
 
     async function fetchWorkerInventory() {
         const { data, error } = await db.from('inventory').select('*').order('id', { ascending: true });
-        if (error) return;
+        if (error) {
+            showToast('تعذر جلب المخزون: ' + error.message, 'error');
+            return;
+        }
         workerInventoryData = data || [];
         populateWorkerBranches();
         filterWorkerTable();
@@ -266,6 +300,7 @@
 
     // إتمام الشراء لكل عناصر السلة دفعة واحدة
     window.checkoutCart = async function() {
+        if (!(await checkCurrentUserRole())) return;
         if (cart.length === 0) {
             showToast("السلة فارغة!", "warning");
             return;
@@ -313,7 +348,10 @@
         window.location.href = 'index.html';
     };
 
-    db.channel('worker-cart-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'inventory' }, () => fetchWorkerInventory()).subscribe();
+    db.channel('worker-cart-changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory' }, () => fetchWorkerInventory())
+        .subscribe();
+
     checkAuth();
 </script>
 </body>

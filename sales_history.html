@@ -6,7 +6,7 @@
     <title>سجل المبيعات والتقارير المتقدمة</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
-        body { font-family: Tahoma, sans-serif; background: #0f172a; color: #fff; margin: 0; padding: 20px; }
+        body { font-family: Tahoma, sans-serif; background: #0f172a; color: #fff; margin: 0; padding: 20px; display: none; }
         .header { background: #1e293b; padding: 15px 20px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); flex-wrap: wrap; gap: 10px; }
         h2, h3 { color: #38bdf8; margin: 0; }
         .card { background: #1e293b; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
@@ -24,7 +24,12 @@
         table { width: 100%; border-collapse: collapse; margin-top: 10px; }
         th, td { border: 1px solid #475569; padding: 10px; text-align: center; font-size: 14px; }
         th { background: #334155; color: #38bdf8; }
-        @media print { .no-print { display: none !important; } }
+        @media print {
+            body { background: #fff !important; color: #000 !important; padding: 0; display: block !important; }
+            .no-print { display: none !important; }
+            th { background: #f1f5f9 !important; color: #000 !important; border: 1px solid #000; }
+            td { color: #000 !important; border: 1px solid #000; }
+        }
     </style>
 </head>
 <body>
@@ -85,20 +90,68 @@
 
     let allSalesData = [];
     let currentFilteredData = [];
+    let currentUserEmail = '';
+
+    async function forceKickOut(reason = 'غير مصرح لك بدخول هذه الصفحة أو تم سحب صلاحيتك!') {
+        alert(reason);
+        await db.auth.signOut();
+        window.location.href = 'index.html';
+    }
+
+    async function checkCurrentUserRole() {
+        const { data: { session } } = await db.auth.getSession();
+        if (!session || !session.user || !session.user.email) {
+            window.location.href = 'index.html';
+            return false;
+        }
+        currentUserEmail = session.user.email;
+        const { data: userData, error } = await db
+            .from('users')
+            .select('role')
+            .eq('email', currentUserEmail)
+            .maybeSingle();
+
+        if (error || !userData || !['admin', 'boss', 'worker'].includes(userData.role)) {
+            await forceKickOut('غير مصرح لك بدخول هذه الصفحة أو تم سحب صلاحيتك!');
+            return false;
+        }
+        return true;
+    }
+
+    function watchCurrentUserRole() {
+        db.channel('sales-role-watch')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, async (payload) => {
+                const changedEmail = payload.new?.email || payload.old?.email;
+                if (changedEmail && currentUserEmail && changedEmail.toLowerCase() === currentUserEmail.toLowerCase()) {
+                    await checkCurrentUserRole();
+                }
+            })
+            .subscribe();
+    }
+
+    async function initPage() {
+        const isAllowed = await checkCurrentUserRole();
+        if (!isAllowed) return;
+        document.body.style.display = 'block';
+        watchCurrentUserRole();
+        fetchSales();
+    }
 
     async function fetchSales() {
         const { data, error } = await db.from('sales').select('*').order('created_at', { ascending: false });
         if (error) return;
         allSalesData = data || [];
-        currentFilteredData = allSalesData;
         populateBranches();
-        renderSales(allSalesData);
+        filterSales();
     }
 
     function populateBranches() {
         const select = document.getElementById('branch-sales-filter');
+        const currentVal = select.value;
         const branches = [...new Set(allSalesData.map(s => s.branch))].filter(Boolean);
+        select.innerHTML = '<option value="">جميع الفروع</option>';
         branches.forEach(b => select.innerHTML += `<option value="${b}">${b}</option>`);
+        select.value = currentVal;
     }
 
     function renderSales(data) {
@@ -137,7 +190,7 @@
         currentFilteredData = allSalesData.filter(s => {
             const matchText = (s.item_name || '').toLowerCase().includes(query) || (s.worker_email || '').toLowerCase().includes(query);
             const matchBranch = branch === '' || s.branch === branch;
-            
+
             let matchDate = true;
             if (s.created_at) {
                 const saleDate = s.created_at.slice(0, 10);
@@ -166,7 +219,13 @@
         link.click();
     }
 
-    fetchSales();
+    db.channel('sales-realtime-changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'sales' }, () => {
+            fetchSales();
+        })
+        .subscribe();
+
+    initPage();
 </script>
 </body>
 </html>
