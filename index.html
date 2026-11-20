@@ -12,7 +12,8 @@
         input { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #475569; border-radius: 6px; background: #0f172a; color: #fff; box-sizing: border-box; }
         button { width: 100%; padding: 12px; background: #0284c7; border: none; border-radius: 6px; color: #fff; font-size: 16px; cursor: pointer; margin-top: 10px; }
         button:hover { background: #0369a1; }
-        #error-msg { color: #f87171; text-align: center; margin-top: 10px; font-size: 14px; }
+        button:disabled { background: #475569; cursor: not-allowed; }
+        #error-msg { color: #f87171; text-align: center; margin-top: 12px; font-size: 14px; line-height: 1.5; }
     </style>
 </head>
 <body>
@@ -21,10 +22,78 @@
     <h2>تسجيل الدخول</h2>
     <input type="email" id="email" placeholder="البريد الإلكتروني" required>
     <input type="password" id="password" placeholder="كلمة المرور" required>
-    <button onclick="handleLogin()">دخول للنظام</button>
+    <button id="login-btn" onclick="handleLogin()">دخول للنظام</button>
     <div id="error-msg"></div>
 </div>
 
-<script type="module" src="app.js"></script>
+<script>
+    const SUPABASE_URL = 'https://fktettiegkmaijnokrwr.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_lZ6v_qG8aYXpwLY8VxPNfA_BfT87Jsh';
+    const { createClient } = supabase;
+    const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const roleRoutes = {
+        admin: 'admin.html',
+        boss: 'investor.html',
+        worker: 'worker.html'
+    };
+
+    function setError(msg) {
+        document.getElementById('error-msg').textContent = msg;
+    }
+
+    async function redirectByRole(email) {
+        const { data: userData, error } = await db
+            .from('users')
+            .select('role')
+            .eq('email', email)
+            .maybeSingle();
+
+        if (error || !userData || !roleRoutes[userData.role]) {
+            await db.auth.signOut();
+            setError('حسابك لا يملك صلاحية مفعّلة في النظام أو تم سحبها.');
+            return false;
+        }
+
+        window.location.href = roleRoutes[userData.role];
+        return true;
+    }
+
+    window.handleLogin = async function() {
+        const email = document.getElementById('email').value.trim();
+        const password = document.getElementById('password').value;
+        const btn = document.getElementById('login-btn');
+
+        setError('');
+        if (!email || !password) {
+            setError('الرجاء إدخال البريد الإلكتروني وكلمة المرور.');
+            return;
+        }
+
+        btn.disabled = true;
+        btn.textContent = 'جاري التحقق...';
+
+        const { data, error } = await db.auth.signInWithPassword({ email, password });
+        if (error || !data.user) {
+            btn.disabled = false;
+            btn.textContent = 'دخول للنظام';
+            setError('بيانات الدخول غير صحيحة.');
+            return;
+        }
+
+        const redirected = await redirectByRole(data.user.email);
+        if (!redirected) {
+            btn.disabled = false;
+            btn.textContent = 'دخول للنظام';
+        }
+    };
+
+    (async function checkExistingSession() {
+        const { data: { session } } = await db.auth.getSession();
+        if (session && session.user && session.user.email) {
+            await redirectByRole(session.user.email);
+        }
+    })();
+</script>
 </body>
 </html>
