@@ -22,9 +22,40 @@
         .btn-edit { background: #d97706; padding: 6px 12px; font-size: 13px; width: auto; margin: 0; margin-left: 5px; }
         .filter-container { display: flex; gap: 10px; margin-bottom: 15px; }
         .low-stock-badge { background: #dc2626; color: #fff; padding: 3px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
+
+        /* نظام الإشعارات العائمة Toast */
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-width: 340px;
+        }
+        .toast {
+            padding: 12px 16px;
+            border-radius: 8px;
+            color: #fff;
+            font-size: 14px;
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+            animation: fadeInToast 0.25s ease;
+            border-right: 4px solid rgba(255, 255, 255, 0.4);
+        }
+        .toast-success { background: #059669; }
+        .toast-error { background: #dc2626; }
+        .toast-warning { background: #d97706; }
+
+        @keyframes fadeInToast {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
     </style>
 </head>
 <body>
+
+<div id="toast-container" class="toast-container"></div>
 
 <div class="header">
     <h2>لوحة تحكم المحرر (Admin)</h2>
@@ -63,8 +94,6 @@
         </tbody>
     </table>
 </div>
-
-<!-- إدارة المستخدمين والصلاحيات -->
 
 <!-- إضافة قطعة جديدة للمخزون -->
 <div class="card">
@@ -109,90 +138,81 @@
     const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     let allInventoryData = [];
+    let currentUserEmail = '';
+
+    function showToast(message, type = 'success') {
+        const container = document.getElementById('toast-container');
+        if (!container) return;
+
+        const toast = document.createElement('div');
+        toast.className = `toast toast-${type}`;
+        toast.textContent = message;
+        container.appendChild(toast);
+
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            toast.style.transition = 'opacity 0.3s ease';
+            setTimeout(() => toast.remove(), 300);
+        }, 3000);
+    }
+
+    async function forceKickOut(reason = 'تم سحب صلاحيتك أو انتهت الجلسة!') {
+        alert(reason);
+        await db.auth.signOut();
+        window.location.href = 'index.html';
+    }
+
+    async function checkCurrentUserRole() {
+        const { data: { session } } = await db.auth.getSession();
+        if (!session || !session.user || !session.user.email) {
+            window.location.href = 'index.html';
+            return false;
+        }
+        currentUserEmail = session.user.email;
+        const { data: userData, error } = await db
+            .from('users')
+            .select('role')
+            .eq('email', currentUserEmail)
+            .maybeSingle();
+
+        if (error || !userData || userData.role !== 'admin') {
+            await forceKickOut('غير مصرح لك بدخول لوحة الإدارة أو تم سحب صلاحيتك!');
+            return false;
+        }
+        return true;
+    }
+
+    function watchCurrentUserRole() {
+        db.channel('admin-role-watch')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, async (payload) => {
+                const changedEmail = payload.new?.email || payload.old?.email;
+                if (changedEmail && currentUserEmail && changedEmail.toLowerCase() === currentUserEmail.toLowerCase()) {
+                    await checkCurrentUserRole();
+                }
+            })
+            .subscribe();
+    }
 
     async function checkAuth() {
-        const { data: { session } } = await db.auth.getSession();
-        if (!session) {
-            window.location.href = 'index.html';
-            return;
-        }
-        const { data: userData } = await db.from('users').select('role').eq('email', session.user.email).maybeSingle();
-        if (!userData || userData.role !== 'admin') {
-            alert('غير مصرح لك بدخول لوحة الإدارة!');
-            window.location.href = 'index.html';
-            return;
-        }
+        const isAllowed = await checkCurrentUserRole();
+        if (!isAllowed) return;
         document.body.style.display = 'block';
+        watchCurrentUserRole();
         fetchInventory();
-        fetchUsers();
-    }
-
-    async function fetchUsers() {
-        const { data, error } = await db.from('users').select('*').order('email', { ascending: true });
-        const tbody = document.getElementById('users-table-body');
-        tbody.innerHTML = '';
-        if (error) return;
-
-        if (data && data.length > 0) {
-            data.forEach(user => {
-                tbody.innerHTML += `<tr>
-                    <td>${user.email}</td>
-                    <td style="font-weight: bold; color: #38bdf8;">${user.role}</td>
-                    <td>
-                        <button class="btn-delete" onclick="deleteUser('${user.email}')">حذف الصلاحية</button>
-                    </td>
-                </tr>`;
-            });
-        } else {
-            tbody.innerHTML = `<tr><td colspan="3" style="color: #94a3b8;">لا توجد مستخدمين مسجلين</td></tr>`;
-        }
-    }
-
-    async function createNewUser() {
-        const email = document.getElementById('new-user-email').value.trim();
-        const password = document.getElementById('new-user-password').value.trim();
-        const role = document.getElementById('new-user-role').value;
-
-        if (!email || !password) {
-            alert('الرجاء إدخال البريد الإلكتروني وكلمة المرور');
-            return;
-        }
-
-        const { error: authError } = await db.auth.signUp({ email, password });
-        if (authError) {
-            alert('فشل إنشاء الحساب: ' + authError.message);
-            return;
-        }
-
-        const { error: dbError } = await db.from('users').insert([{ email, role }]);
-        if (dbError) {
-            alert('تم إنشاء الحساب لكن فشل تسجيل الصلاحية: ' + dbError.message);
-        } else {
-            alert('تم إنشاء المستخدم وصلاحيته بنجاح!');
-            document.getElementById('new-user-email').value = '';
-            document.getElementById('new-user-password').value = '';
-            fetchUsers();
-        }
-    }
-
-    async function deleteUser(email) {
-        if (confirm(`هل أنت متأكد من حذف صلاحية المستخدم "${email}"؟`)) {
-            const { error } = await db.from('users').delete().eq('email', email);
-            if (error) alert('فشل الحذف: ' + error.message);
-            else fetchUsers();
-        }
     }
 
     async function fetchInventory() {
         const { data, error } = await db.from('inventory').select('*').order('id', { ascending: true });
-        if (error) return;
+        if (error) {
+            showToast('تعذر جلب بيانات المخزون: ' + error.message, 'error');
+            return;
+        }
         allInventoryData = data || [];
         populateBranchDropdown();
         renderTable(allInventoryData);
         renderLowStockTable(allInventoryData);
     }
 
-    // عرض قائمة المنتجات منخفضة المخزون (الكمية <= 3)
     function renderLowStockTable(data) {
         const tbody = document.getElementById('low-stock-table-body');
         tbody.innerHTML = '';
@@ -202,7 +222,9 @@
         if (lowStockItems.length > 0) {
             lowStockItems.forEach(item => {
                 const qty = Number(item.quantity) || 0;
-                const statusText = qty === 0 ? '<span class="low-stock-badge" style="background:#b91c1c;">نفدت تماماً</span>' : `<span class="low-stock-badge">متبقي ${qty}</span>`;
+                const statusText = qty === 0
+                    ? '<span class="low-stock-badge" style="background:#b91c1c;">نفدت تماماً</span>'
+                    : `<span class="low-stock-badge">متبقي ${qty}</span>`;
 
                 tbody.innerHTML += `<tr>
                     <td>${item.name || ''}</td>
@@ -265,21 +287,23 @@
     }
 
     async function updateCapital() {
+        if (!(await checkCurrentUserRole())) return;
         const capitalValue = parseFloat(document.getElementById('capital-input').value);
         if (isNaN(capitalValue) || capitalValue < 0) {
-            alert('الرجاء إدخال مبلغ صحيح لرأس المال');
+            showToast('الرجاء إدخال مبلغ صحيح لرأس المال', 'warning');
             return;
         }
         const { error } = await db.from('settings').update({ value: capitalValue }).eq('key', '1');
         if (error) {
-            alert('فشل حفظ رأس المال: ' + error.message);
+            showToast('فشل حفظ رأس المال: ' + error.message, 'error');
         } else {
-            alert('تم حفظ وتحديث رأس المال بنجاح!');
+            showToast('تم حفظ وتحديث رأس المال بنجاح!', 'success');
             document.getElementById('capital-input').value = '';
         }
     }
 
     window.addInventoryItem = async function() {
+        if (!(await checkCurrentUserRole())) return;
         const name = document.getElementById('item-name').value.trim();
         const branch = document.getElementById('item-branch').value.trim();
         const buying_price = Number(document.getElementById('buying-price').value) || 0;
@@ -287,30 +311,35 @@
         const quantity = Number(document.getElementById('quantity').value) || 0;
 
         if (!name || !branch) {
-            alert("الرجاء إدخال اسم القطعة واسم الفرع");
+            showToast('الرجاء إدخال اسم القطعة واسم الفرع', 'warning');
             return;
         }
         const { error } = await db.from('inventory').insert([{ name, branch, buying_price, selling_price, quantity }]);
         if (error) {
-            alert("خطأ: " + error.message);
+            showToast('خطأ: ' + error.message, 'error');
         } else {
-            alert("تمت الإضافة بنجاح!");
+            showToast('تمت الإضافة بنجاح!', 'success');
             ['item-name', 'item-branch', 'buying-price', 'selling-price', 'quantity'].forEach(id => document.getElementById(id).value = '');
             fetchInventory();
         }
     };
 
     window.deleteItem = async function(id) {
+        if (!(await checkCurrentUserRole())) return;
         const item = allInventoryData.find(i => i.id === id);
         if (!item) return;
         if (confirm(`هل أنت متأكد من حذف المنتج "${item.name}" من المخزون؟`)) {
             const { error } = await db.from('inventory').delete().eq('id', id);
-            if (error) alert("فشل الحذف: " + error.message);
-            else fetchInventory();
+            if (error) showToast('فشل الحذف: ' + error.message, 'error');
+            else {
+                showToast('تم حذف المنتج من المخزون', 'success');
+                fetchInventory();
+            }
         }
     };
 
     window.editItem = async function(id) {
+        if (!(await checkCurrentUserRole())) return;
         const item = allInventoryData.find(i => i.id === id);
         if (!item) return;
         const newQty = prompt(`تعديل الكمية الجديدة لـ "${item.name}":`, item.quantity);
@@ -323,8 +352,11 @@
             selling_price: Number(newPrice)
         }).eq('id', id);
 
-        if (error) alert("فشل التعديل: " + error.message);
-        else fetchInventory();
+        if (error) showToast('فشل التعديل: ' + error.message, 'error');
+        else {
+            showToast('تم تعديل بيانات المنتج بنجاح', 'success');
+            fetchInventory();
+        }
     };
 
     window.logout = async function() {
@@ -332,10 +364,11 @@
         window.location.href = 'index.html';
     };
 
-    db.channel('admin-changes').on('postgres_changes', { event: '*', schema: 'public' }, () => {
-        fetchInventory();
-        fetchUsers();
-    }).subscribe();
+    db.channel('admin-inventory-changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory' }, () => {
+            fetchInventory();
+        })
+        .subscribe();
 
     checkAuth();
 </script>

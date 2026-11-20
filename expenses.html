@@ -36,6 +36,35 @@
         th, td { border: 1px solid #475569; padding: 10px; text-align: center; font-size: 14px; }
         th { background: #334155; color: #38bdf8; }
 
+        /* نظام الإشعارات العائمة Toast */
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-width: 340px;
+        }
+        .toast {
+            padding: 12px 16px;
+            border-radius: 8px;
+            color: #fff;
+            font-size: 14px;
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+            animation: fadeInToast 0.25s ease;
+            border-right: 4px solid rgba(255, 255, 255, 0.4);
+        }
+        .toast-success { background: #059669; }
+        .toast-error { background: #dc2626; }
+        .toast-warning { background: #d97706; }
+
+        @keyframes fadeInToast {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
         /* تنسيق مخصص للطباعة وحفظ PDF */
         @media print {
             body { background: #fff !important; color: #000 !important; padding: 0; display: block !important; }
@@ -50,6 +79,8 @@
     </style>
 </head>
 <body>
+
+<div id="toast-container" class="toast-container no-print"></div>
 
 <div class="header">
     <h2>💸 إدارة وتقارير المصروفات التشغيلية</h2>
@@ -112,6 +143,22 @@
 
     let allExpensesData = [];
     let filteredExpensesData = [];
+
+    function showToast(message, type = 'success') {
+        const container = document.getElementById('toast-container');
+        if (!container) return;
+
+        const toast = document.createElement('div');
+        toast.className = `toast toast-${type}`;
+        toast.textContent = message;
+        container.appendChild(toast);
+
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            toast.style.transition = 'opacity 0.3s ease';
+            setTimeout(() => toast.remove(), 300);
+        }, 3000);
+    }
 
     async function checkAuth() {
         const { data: { session } } = await db.auth.getSession();
@@ -189,14 +236,15 @@
         const price = Number(document.getElementById('expense-amount').value);
 
         if (!title || isNaN(price) || price <= 0) {
-            alert('الرجاء إدخال وصف صحيح للمصروف ومبلغ أكبر من الصفر');
+            showToast('الرجاء إدخال وصف صحيح للمصروف ومبلغ أكبر من الصفر', 'warning');
             return;
         }
 
         const { error } = await db.from('costs').insert([{ title: title, price: price }]);
         if (error) {
-            alert('فشل حفظ المصروف: ' + error.message);
+            showToast('فشل حفظ المصروف: ' + error.message, 'error');
         } else {
+            showToast('تم تسجيل المصروف بنجاح!', 'success');
             document.getElementById('expense-title').value = '';
             document.getElementById('expense-amount').value = '';
             fetchExpenses();
@@ -206,14 +254,17 @@
     async function deleteExpense(id) {
         if (confirm('هل أنت متأكد من حذف هذا المصروف؟')) {
             const { error } = await db.from('costs').delete().eq('id', id);
-            if (error) alert('فشل الحذف: ' + error.message);
-            else fetchExpenses();
+            if (error) showToast('فشل الحذف: ' + error.message, 'error');
+            else {
+                showToast('تم حذف المصروف بنجاح', 'success');
+                fetchExpenses();
+            }
         }
     }
 
     function downloadExpensesTXT() {
         if (filteredExpensesData.length === 0) {
-            alert('لا توجد بيانات لتحميلها!');
+            showToast('لا توجد بيانات لتحميلها!', 'warning');
             return;
         }
 
@@ -237,6 +288,7 @@
         link.href = URL.createObjectURL(blob);
         link.download = `تقرير_المصروفات_${new Date().toISOString().slice(0,10)}.txt`;
         link.click();
+        showToast('تم تحميل تقرير المصروفات بنجاح', 'success');
     }
 
     db.channel('costs-page-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'costs' }, () => {
