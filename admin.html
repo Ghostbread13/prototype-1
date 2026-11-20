@@ -20,8 +20,42 @@
         .nav-btn { background: #0284c7; color: #fff; text-decoration: none; padding: 8px 15px; border-radius: 6px; font-size: 14px; display: inline-block; }
         .btn-delete { background: #ef4444; padding: 6px 12px; font-size: 13px; width: auto; margin: 0; }
         .btn-edit { background: #d97706; padding: 6px 12px; font-size: 13px; width: auto; margin: 0; margin-left: 5px; }
-        .filter-container { display: flex; gap: 10px; margin-bottom: 15px; }
+        .btn-restock { background: #059669; padding: 6px 12px; font-size: 13px; width: auto; margin: 0; margin-left: 5px; }
+        .btn-restock:hover { background: #047857; }
+        .filter-container { display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap; }
+        .filter-container input, .filter-container select { flex: 1; min-width: 180px; margin: 0; }
         .low-stock-badge { background: #dc2626; color: #fff; padding: 3px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
+
+        .summary-grid { display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 20px; }
+        .summary-box { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 16px; flex: 1; min-width: 190px; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+        .summary-box span { display: block; color: #94a3b8; font-size: 13px; margin-bottom: 6px; }
+        .summary-box strong { font-size: 19px; color: #38bdf8; }
+
+        /* نافذة التعديل الكامل للقطعة */
+        .edit-modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(2, 6, 23, 0.85);
+            z-index: 10000;
+            justify-content: center;
+            align-items: center;
+            padding: 15px;
+        }
+        .edit-box {
+            background: #1e293b;
+            border: 2px solid #d97706;
+            border-radius: 12px;
+            padding: 20px;
+            width: 100%;
+            max-width: 440px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6);
+        }
+        .edit-box label { display: block; font-size: 13px; color: #cbd5e1; margin-top: 8px; }
+        .modal-actions { display: flex; gap: 10px; margin-top: 14px; }
+        .modal-actions button { margin-top: 0; }
+        .btn-cancel { background: #475569; }
+        .btn-cancel:hover { background: #334155; }
 
         /* نظام الإشعارات العائمة Toast */
         .toast-container {
@@ -59,12 +93,31 @@
 
 <div class="header">
     <h2>لوحة تحكم المحرر (Admin)</h2>
-    <div style="display: flex; gap: 10px; align-items: center;">
+    <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
       <a href="users_management.html" class="nav-btn" style="background: #7c3aed;">👥 إدارة المستخدمين</a>
-
       <a href="expenses.html" class="nav-btn" style="background: #0284c7;">💸 إدارة المصروفات</a>
-        <a href="sales_history.html" class="nav-btn">سجل المبيعات والتقارير</a>
-        <button class="logout-btn" onclick="logout()">تسجيل الخروج</button>
+      <a href="sales_history.html" class="nav-btn">سجل المبيعات والتقارير</a>
+      <button class="logout-btn" onclick="logout()">تسجيل الخروج</button>
+    </div>
+</div>
+
+<!-- ملخص سريع للمخزون والقيمة المجمّدة -->
+<div class="summary-grid">
+    <div class="summary-box">
+        <span>رأس المال المسجل (سيولة/كلي)</span>
+        <strong id="admin-capital-display" style="color: #4ade80;">0 دج</strong>
+    </div>
+    <div class="summary-box">
+        <span>قيمة المخزون الحالية (بسعر الشراء)</span>
+        <strong id="frozen-stock-value" style="color: #facc15;">0 دج</strong>
+    </div>
+    <div class="summary-box">
+        <span>إجمالي القطع المتوفرة</span>
+        <strong id="total-stock-units">0</strong>
+    </div>
+    <div class="summary-box">
+        <span>منتجات منخفضة / نافدة (≤ 3)</span>
+        <strong id="low-stock-count" style="color: #f87171;">0</strong>
     </div>
 </div>
 
@@ -78,7 +131,7 @@
 <!-- قائمة تنبيهات المخزون المنخفض والنافد -->
 <div class="card" style="border: 2px solid #dc2626;">
     <h3 style="color: #f87171;">⚠️ قائمة المنتجات التي نفدت أو اقتربت من النفاد (الكمية ≤ 3)</h3>
-    <p style="color: #94a3b8; font-size: 13px; margin-top: 5px;">هذه القائمة مخصصة لتسهيل متابعة البضاعة التي تحتاج إلى إعادة تموين أو قرار بالحذف.</p>
+    <p style="color: #94a3b8; font-size: 13px; margin-top: 5px;">هذه القائمة مخصصة لتسهيل متابعة البضاعة التي تحتاج إلى إعادة تموين سريع أو تعديل أو حذف.</p>
     <table>
         <thead>
             <tr>
@@ -129,6 +182,28 @@
         </thead>
         <tbody id="inventory-table-body"></tbody>
     </table>
+</div>
+
+<!-- نافذة التعديل الكامل للقطعة -->
+<div id="edit-modal" class="edit-modal" onclick="closeEditOnBackdrop(event)">
+    <div class="edit-box">
+        <h3>✏️ تعديل بيانات القطعة</h3>
+        <input type="hidden" id="edit-item-id">
+        <label>اسم القطعة</label>
+        <input type="text" id="edit-item-name">
+        <label>الفرع</label>
+        <input type="text" id="edit-item-branch">
+        <label>سعر الشراء (دج)</label>
+        <input type="number" id="edit-buying-price" min="0">
+        <label>سعر البيع (دج)</label>
+        <input type="number" id="edit-selling-price" min="0">
+        <label>الكمية المتوفرة</label>
+        <input type="number" id="edit-quantity" min="0">
+        <div class="modal-actions">
+            <button style="background: #059669;" onclick="saveEditedItem()">حفظ التعديلات</button>
+            <button class="btn-cancel" onclick="closeEditModal()">إلغاء</button>
+        </div>
+    </div>
 </div>
 
 <script>
@@ -193,12 +268,46 @@
             .subscribe();
     }
 
+    async function logInventoryMovement(entry) {
+        try {
+            await db.from('inventory_logs').insert([entry]);
+        } catch (_) {
+            // تجاهل إذا لم يكن جدول inventory_logs منشأً
+        }
+    }
+
     async function checkAuth() {
         const isAllowed = await checkCurrentUserRole();
         if (!isAllowed) return;
         document.body.style.display = 'block';
         watchCurrentUserRole();
-        fetchInventory();
+        await Promise.all([fetchInventory(), fetchCapitalSummary()]);
+    }
+
+    async function fetchCapitalSummary() {
+        const { data, error } = await db.from('settings').select('value').eq('key', '1').maybeSingle();
+        if (!error && data && data.value !== null) {
+            const cap = parseFloat(data.value) || 0;
+            document.getElementById('admin-capital-display').textContent = cap.toLocaleString() + ' دج';
+        }
+    }
+
+    function updateInventorySummary(data) {
+        let frozenValue = 0;
+        let totalUnits = 0;
+        let lowCount = 0;
+
+        data.forEach(item => {
+            const qty = Number(item.quantity) || 0;
+            const buy = Number(item.buying_price) || 0;
+            totalUnits += qty;
+            frozenValue += qty * buy;
+            if (qty <= 3) lowCount++;
+        });
+
+        document.getElementById('frozen-stock-value').textContent = frozenValue.toLocaleString() + ' دج';
+        document.getElementById('total-stock-units').textContent = totalUnits.toLocaleString();
+        document.getElementById('low-stock-count').textContent = lowCount.toLocaleString();
     }
 
     async function fetchInventory() {
@@ -208,8 +317,9 @@
             return;
         }
         allInventoryData = data || [];
+        updateInventorySummary(allInventoryData);
         populateBranchDropdown();
-        renderTable(allInventoryData);
+        filterTable();
         renderLowStockTable(allInventoryData);
     }
 
@@ -229,10 +339,11 @@
                 tbody.innerHTML += `<tr>
                     <td>${item.name || ''}</td>
                     <td>${item.branch || '-'}</td>
-                    <td>${item.selling_price || 0} دج</td>
+                    <td>${Number(item.selling_price || 0).toLocaleString()} دج</td>
                     <td>${statusText}</td>
                     <td>
-                        <button class="btn-edit" onclick="editItem(${item.id})">زيادة الكمية / تعديل</button>
+                        <button class="btn-restock" onclick="quickRestock(${item.id})">+ تموين سريع</button>
+                        <button class="btn-edit" onclick="editItem(${item.id})">تعديل كامل</button>
                         <button class="btn-delete" onclick="deleteItem(${item.id})">حذف نهائي</button>
                     </td>
                 </tr>`;
@@ -241,6 +352,44 @@
             tbody.innerHTML = `<tr><td colspan="5" style="color: #4ade80;">ممتاز! لا توجد منتجات منخفضة المخزون حالياً.</td></tr>`;
         }
     }
+
+    window.quickRestock = async function(id) {
+        if (!(await checkCurrentUserRole())) return;
+        const item = allInventoryData.find(i => i.id === id);
+        if (!item) return;
+
+        const addQtyStr = prompt(`أدخل الكمية المضافة لتموين "${item.name}" (الحالية: ${item.quantity || 0}):`, '5');
+        if (addQtyStr === null) return;
+        const addQty = parseInt(addQtyStr, 10);
+
+        if (isNaN(addQty) || addQty <= 0) {
+            showToast('الرجاء إدخال كمية إضافية صحيحة أكبر من الصفر', 'warning');
+            return;
+        }
+
+        const prevQty = Number(item.quantity) || 0;
+        const nextQty = prevQty + addQty;
+
+        const { error } = await db.from('inventory').update({ quantity: nextQty }).eq('id', id);
+        if (error) {
+            showToast('فشل التموين السريع: ' + error.message, 'error');
+            return;
+        }
+
+        await logInventoryMovement({
+            item_id: id,
+            item_name: item.name,
+            branch: item.branch,
+            action_type: 'quick_restock',
+            quantity_change: addQty,
+            previous_quantity: prevQty,
+            new_quantity: nextQty,
+            actor_email: currentUserEmail
+        });
+
+        showToast(`تمت إضافة ${addQty} قطعة إلى "${item.name}"`, 'success');
+        await fetchInventory();
+    };
 
     function populateBranchDropdown() {
         const branchSelect = document.getElementById('branch-filter');
@@ -261,9 +410,9 @@
                 tbody.innerHTML += `<tr>
                     <td>${item.name || ''}</td>
                     <td>${item.branch || '-'}</td>
-                    <td>${item.buying_price || 0} دج</td>
-                    <td>${item.selling_price || 0} دج</td>
-                    <td>${item.quantity || 0}</td>
+                    <td>${Number(item.buying_price || 0).toLocaleString()} دج</td>
+                    <td>${Number(item.selling_price || 0).toLocaleString()} دج</td>
+                    <td>${Number(item.quantity || 0).toLocaleString()}</td>
                     <td>
                         <button class="btn-edit" onclick="editItem(${item.id})">تعديل</button>
                         <button class="btn-delete" onclick="deleteItem(${item.id})">حذف</button>
@@ -297,8 +446,14 @@
         if (error) {
             showToast('فشل حفظ رأس المال: ' + error.message, 'error');
         } else {
+            await logInventoryMovement({
+                action_type: 'capital_update',
+                new_quantity: capitalValue,
+                actor_email: currentUserEmail
+            });
             showToast('تم حفظ وتحديث رأس المال بنجاح!', 'success');
             document.getElementById('capital-input').value = '';
+            await fetchCapitalSummary();
         }
     }
 
@@ -314,13 +469,33 @@
             showToast('الرجاء إدخال اسم القطعة واسم الفرع', 'warning');
             return;
         }
-        const { error } = await db.from('inventory').insert([{ name, branch, buying_price, selling_price, quantity }]);
+        if (buying_price < 0 || selling_price < 0 || quantity < 0) {
+            showToast('القيم الرقمية لا يمكن أن تكون سالبة', 'warning');
+            return;
+        }
+
+        const { data: inserted, error } = await db
+            .from('inventory')
+            .insert([{ name, branch, buying_price, selling_price, quantity }])
+            .select()
+            .maybeSingle();
+
         if (error) {
             showToast('خطأ: ' + error.message, 'error');
         } else {
+            await logInventoryMovement({
+                item_id: inserted?.id || null,
+                item_name: name,
+                branch,
+                action_type: 'add_item',
+                quantity_change: quantity,
+                previous_quantity: 0,
+                new_quantity: quantity,
+                actor_email: currentUserEmail
+            });
             showToast('تمت الإضافة بنجاح!', 'success');
             ['item-name', 'item-branch', 'buying-price', 'selling-price', 'quantity'].forEach(id => document.getElementById(id).value = '');
-            fetchInventory();
+            await fetchInventory();
         }
     };
 
@@ -330,33 +505,94 @@
         if (!item) return;
         if (confirm(`هل أنت متأكد من حذف المنتج "${item.name}" من المخزون؟`)) {
             const { error } = await db.from('inventory').delete().eq('id', id);
-            if (error) showToast('فشل الحذف: ' + error.message, 'error');
-            else {
+            if (error) {
+                showToast('فشل الحذف: ' + error.message, 'error');
+            } else {
+                await logInventoryMovement({
+                    item_id: id,
+                    item_name: item.name,
+                    branch: item.branch,
+                    action_type: 'delete_item',
+                    quantity_change: -(Number(item.quantity) || 0),
+                    previous_quantity: Number(item.quantity) || 0,
+                    new_quantity: 0,
+                    actor_email: currentUserEmail
+                });
                 showToast('تم حذف المنتج من المخزون', 'success');
-                fetchInventory();
+                await fetchInventory();
             }
         }
     };
 
-    window.editItem = async function(id) {
-        if (!(await checkCurrentUserRole())) return;
+    window.editItem = function(id) {
         const item = allInventoryData.find(i => i.id === id);
         if (!item) return;
-        const newQty = prompt(`تعديل الكمية الجديدة لـ "${item.name}":`, item.quantity);
-        if (newQty === null) return;
-        const newPrice = prompt(`تعديل سعر البيع لـ "${item.name}":`, item.selling_price);
-        if (newPrice === null) return;
 
-        const { error } = await db.from('inventory').update({
-            quantity: Number(newQty),
-            selling_price: Number(newPrice)
-        }).eq('id', id);
+        document.getElementById('edit-item-id').value = item.id;
+        document.getElementById('edit-item-name').value = item.name || '';
+        document.getElementById('edit-item-branch').value = item.branch || '';
+        document.getElementById('edit-buying-price').value = Number(item.buying_price) || 0;
+        document.getElementById('edit-selling-price').value = Number(item.selling_price) || 0;
+        document.getElementById('edit-quantity').value = Number(item.quantity) || 0;
 
-        if (error) showToast('فشل التعديل: ' + error.message, 'error');
-        else {
-            showToast('تم تعديل بيانات المنتج بنجاح', 'success');
-            fetchInventory();
+        document.getElementById('edit-modal').style.display = 'flex';
+    };
+
+    window.closeEditModal = function() {
+        document.getElementById('edit-modal').style.display = 'none';
+    };
+
+    window.closeEditOnBackdrop = function(event) {
+        if (event.target.id === 'edit-modal') {
+            closeEditModal();
         }
+    };
+
+    window.saveEditedItem = async function() {
+        if (!(await checkCurrentUserRole())) return;
+
+        const id = Number(document.getElementById('edit-item-id').value);
+        const oldItem = allInventoryData.find(i => i.id === id);
+        const name = document.getElementById('edit-item-name').value.trim();
+        const branch = document.getElementById('edit-item-branch').value.trim();
+        const buying_price = Number(document.getElementById('edit-buying-price').value);
+        const selling_price = Number(document.getElementById('edit-selling-price').value);
+        const quantity = Number(document.getElementById('edit-quantity').value);
+
+        if (!name || !branch) {
+            showToast('الرجاء إدخال اسم القطعة والفرع', 'warning');
+            return;
+        }
+        if ([buying_price, selling_price, quantity].some(v => isNaN(v) || v < 0)) {
+            showToast('الرجاء إدخال أرقام صحيحة وغير سالبة', 'warning');
+            return;
+        }
+
+        const { error } = await db
+            .from('inventory')
+            .update({ name, branch, buying_price, selling_price, quantity })
+            .eq('id', id);
+
+        if (error) {
+            showToast('فشل التعديل: ' + error.message, 'error');
+            return;
+        }
+
+        const prevQty = oldItem ? Number(oldItem.quantity) || 0 : 0;
+        await logInventoryMovement({
+            item_id: id,
+            item_name: name,
+            branch,
+            action_type: 'edit_item',
+            quantity_change: quantity - prevQty,
+            previous_quantity: prevQty,
+            new_quantity: quantity,
+            actor_email: currentUserEmail
+        });
+
+        closeEditModal();
+        showToast('تم تعديل بيانات المنتج بنجاح', 'success');
+        await fetchInventory();
     };
 
     window.logout = async function() {
@@ -367,6 +603,9 @@
     db.channel('admin-inventory-changes')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory' }, () => {
             fetchInventory();
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'settings' }, () => {
+            fetchCapitalSummary();
         })
         .subscribe();
 

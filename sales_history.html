@@ -18,7 +18,7 @@
         .filter-container { display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap; }
         input, select { flex: 1; min-width: 150px; padding: 10px; border: 1px solid #475569; border-radius: 6px; background: #0f172a; color: #fff; box-sizing: border-box; }
         .stats { display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap; }
-        .stat-box { background: #0f172a; padding: 15px; border-radius: 8px; flex: 1; min-width: 200px; text-align: center; border: 1px solid #334155; }
+        .stat-box { background: #0f172a; padding: 15px; border-radius: 8px; flex: 1; min-width: 180px; text-align: center; border: 1px solid #334155; }
         .stat-box span { display: block; color: #94a3b8; font-size: 13px; margin-bottom: 5px; }
         .stat-box strong { font-size: 20px; color: #4ade80; }
         table { width: 100%; border-collapse: collapse; margin-top: 10px; }
@@ -29,6 +29,8 @@
             .no-print { display: none !important; }
             th { background: #f1f5f9 !important; color: #000 !important; border: 1px solid #000; }
             td { color: #000 !important; border: 1px solid #000; }
+            .stat-box { background: #f8fafc !important; border: 1px solid #000 !important; }
+            .stat-box strong, .stat-box span { color: #000 !important; }
         }
     </style>
 </head>
@@ -48,6 +50,10 @@
         <div class="stat-box">
             <span>إجمالي المداخيل المعروضة</span>
             <strong id="total-revenue">0 دج</strong>
+        </div>
+        <div class="stat-box">
+            <span>إجمالي أرباح المبيعات (قبل المصروفات)</span>
+            <strong id="total-gross-profit" style="color: #facc15;">0 دج</strong>
         </div>
         <div class="stat-box">
             <span>عدد عمليات البيع</span>
@@ -72,12 +78,13 @@
                 <th>الفرع</th>
                 <th>الكمية</th>
                 <th>المبلغ</th>
+                <th>الربح التقريبي</th>
                 <th>البائع</th>
                 <th>التاريخ والوقت</th>
             </tr>
         </thead>
         <tbody id="sales-table-body">
-            <tr><td colspan="6" style="color: #94a3b8;">جاري تحميل سجل المبيعات...</td></tr>
+            <tr><td colspan="7" style="color: #94a3b8;">جاري تحميل سجل المبيعات...</td></tr>
         </tbody>
     </table>
 </div>
@@ -89,6 +96,7 @@
     const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     let allSalesData = [];
+    let inventoryBuyingMap = {};
     let currentFilteredData = [];
     let currentUserEmail = '';
 
@@ -134,10 +142,43 @@
         if (!isAllowed) return;
         document.body.style.display = 'block';
         watchCurrentUserRole();
-        fetchSales();
+        await fetchSales();
+    }
+
+    async function fetchInventoryBuyingPrices() {
+        const { data, error } = await db.from('inventory').select('name, branch, buying_price');
+        if (error || !data) return;
+
+        const map = {};
+        data.forEach(item => {
+            const nameKey = (item.name || '').trim().toLowerCase();
+            const branchKey = (item.branch || '').trim().toLowerCase();
+            const buy = Number(item.buying_price) || 0;
+            if (nameKey) {
+                map[`${nameKey}||${branchKey}`] = buy;
+                if (!(nameKey in map)) {
+                    map[nameKey] = buy;
+                }
+            }
+        });
+        inventoryBuyingMap = map;
+    }
+
+    function calculateSaleProfit(sale) {
+        const rev = Number(sale.total_price) || 0;
+        const qty = Number(sale.quantity_sold) || 0;
+        const nameKey = (sale.item_name || '').trim().toLowerCase();
+        const branchKey = (sale.branch || '').trim().toLowerCase();
+
+        const buyPrice = `${nameKey}||${branchKey}` in inventoryBuyingMap
+            ? inventoryBuyingMap[`${nameKey}||${branchKey}`]
+            : (inventoryBuyingMap[nameKey] ?? 0);
+
+        return rev - (buyPrice * qty);
     }
 
     async function fetchSales() {
+        await fetchInventoryBuyingPrices();
         const { data, error } = await db.from('sales').select('*').order('created_at', { ascending: false });
         if (error) return;
         allSalesData = data || [];
@@ -158,26 +199,32 @@
         const tbody = document.getElementById('sales-table-body');
         tbody.innerHTML = '';
         let totalRev = 0;
+        let totalProfit = 0;
 
         if (data.length > 0) {
             data.forEach(sale => {
                 const price = Number(sale.total_price) || 0;
+                const profit = calculateSaleProfit(sale);
                 totalRev += price;
+                totalProfit += profit;
                 const dateStr = sale.created_at ? new Date(sale.created_at).toLocaleString('ar-DZ') : '-';
+                const profitColor = profit >= 0 ? '#facc15' : '#f87171';
 
                 tbody.innerHTML += `<tr>
                     <td>${sale.item_name || ''}</td>
                     <td>${sale.branch || '-'}</td>
-                    <td>${sale.quantity_sold || 0}</td>
+                    <td>${Number(sale.quantity_sold || 0).toLocaleString()}</td>
                     <td style="color: #4ade80; font-weight: bold;">${price.toLocaleString()} دج</td>
+                    <td style="color: ${profitColor}; font-weight: bold;">${profit.toLocaleString()} دج</td>
                     <td>${sale.worker_email || '-'}</td>
                     <td style="font-size: 12px;">${dateStr}</td>
                 </tr>`;
             });
         } else {
-            tbody.innerHTML = `<tr><td colspan="6" style="color: #94a3b8;">لا توجد مبيعات مطابقة</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="7" style="color: #94a3b8;">لا توجد مبيعات مطابقة</td></tr>`;
         }
         document.getElementById('total-revenue').textContent = totalRev.toLocaleString() + ' دج';
+        document.getElementById('total-gross-profit').textContent = totalProfit.toLocaleString() + ' دج';
         document.getElementById('total-count').textContent = data.length;
     }
 
@@ -207,11 +254,16 @@
         if (currentFilteredData.length === 0) { alert('لا توجد بيانات لتحميلها!'); return; }
         let content = "=== تقرير المبيعات المتقدم ===\n\n";
         let sum = 0;
+        let profitSum = 0;
         currentFilteredData.forEach((s, i) => {
-            sum += Number(s.total_price) || 0;
-            content += `${i + 1}. قطعة: ${s.item_name} | الفرع: ${s.branch} | الكمية: ${s.quantity_sold} | المبلغ: ${s.total_price} دج | البائع: ${s.worker_email} | التاريخ: ${s.created_at}\n`;
+            const price = Number(s.total_price) || 0;
+            const profit = calculateSaleProfit(s);
+            sum += price;
+            profitSum += profit;
+            content += `${i + 1}. قطعة: ${s.item_name} | الفرع: ${s.branch} | الكمية: ${s.quantity_sold} | المبلغ: ${price.toLocaleString()} دج | الربح: ${profit.toLocaleString()} دج | البائع: ${s.worker_email} | التاريخ: ${s.created_at}\n`;
         });
         content += `\nالإجمالي الكلي: ${sum.toLocaleString()} دج\n`;
+        content += `إجمالي الأرباح التقريبية: ${profitSum.toLocaleString()} دج\n`;
         const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
         const link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
@@ -221,6 +273,9 @@
 
     db.channel('sales-realtime-changes')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'sales' }, () => {
+            fetchSales();
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory' }, () => {
             fetchSales();
         })
         .subscribe();

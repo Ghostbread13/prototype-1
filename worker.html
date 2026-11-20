@@ -7,21 +7,58 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         body { font-family: Tahoma, sans-serif; background: #0f172a; color: #fff; margin: 0; padding: 20px; display: none; }
-        .header { background: #1e293b; padding: 15px 20px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+        .header { background: #1e293b; padding: 15px 20px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); flex-wrap: wrap; gap: 10px; }
         h2, h3 { color: #38bdf8; margin: 0; }
         .card { background: #1e293b; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
-        .filter-container { display: flex; gap: 10px; margin: 15px 0; }
-        .filter-container input, .filter-container select { width: 100%; padding: 10px; border: 1px solid #475569; border-radius: 6px; background: #0f172a; color: #fff; box-sizing: border-box; }
+        .filter-container { display: flex; gap: 10px; margin: 15px 0; flex-wrap: wrap; }
+        .filter-container input, .filter-container select { flex: 1; min-width: 180px; padding: 10px; border: 1px solid #475569; border-radius: 6px; background: #0f172a; color: #fff; box-sizing: border-box; }
         table { width: 100%; border-collapse: collapse; margin-top: 10px; }
         th, td { border: 1px solid #475569; padding: 10px; text-align: center; font-size: 14px; }
         th { background: #334155; color: #38bdf8; }
-        input[type="number"] { width: 60px; padding: 6px; background: #0f172a; border: 1px solid #475569; color: #fff; text-align: center; border-radius: 4px; }
+        input[type="number"] { width: 65px; padding: 6px; background: #0f172a; border: 1px solid #475569; color: #fff; text-align: center; border-radius: 4px; }
+        .qty-controls { display: flex; align-items: center; justify-content: center; gap: 4px; flex-wrap: wrap; }
+        .mini-btn { background: #334155; border: 1px solid #475569; color: #e2e8f0; padding: 4px 7px; border-radius: 4px; font-size: 11px; cursor: pointer; }
+        .mini-btn:hover:not(:disabled) { background: #475569; }
+        .mini-btn:disabled { opacity: 0.4; cursor: not-allowed; }
         .btn { background: #059669; border: none; padding: 6px 12px; border-radius: 6px; color: #fff; font-size: 13px; cursor: pointer; }
-        .btn:hover { background: #047857; }
+        .btn:hover:not(:disabled) { background: #047857; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .btn-danger { background: #ef4444; }
         .btn-danger:hover { background: #dc2626; }
+        .btn-secondary { background: #0284c7; }
+        .btn-secondary:hover { background: #0369a1; }
         .logout-btn { background: #ef4444; border: none; padding: 8px 15px; border-radius: 6px; color: #fff; font-size: 14px; cursor: pointer; }
         .out-of-stock { color: #f87171; font-weight: bold; }
+
+        .cart-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
+        .cart-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 15px; flex-wrap: wrap; gap: 15px; }
+        .change-box { display: flex; align-items: center; gap: 10px; background: #0f172a; padding: 8px 12px; border-radius: 8px; border: 1px solid #334155; flex-wrap: wrap; }
+        .change-box input { width: 110px !important; text-align: right; }
+
+        /* نافذة معاينة/نسخ آخر إيصال عند الطلب فقط */
+        .receipt-modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(2, 6, 23, 0.85);
+            z-index: 10000;
+            justify-content: center;
+            align-items: center;
+            padding: 15px;
+        }
+        .receipt-box {
+            background: #1e293b;
+            border: 2px solid #38bdf8;
+            border-radius: 12px;
+            padding: 20px;
+            width: 100%;
+            max-width: 480px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6);
+        }
+        .receipt-meta { font-size: 13px; color: #cbd5e1; margin: 10px 0; line-height: 1.7; }
+        .receipt-total { font-size: 18px; font-weight: bold; color: #4ade80; text-align: left; margin-top: 12px; }
+        .receipt-btns { display: flex; gap: 10px; margin-top: 16px; }
+        .receipt-btns button { flex: 1; padding: 10px; font-size: 14px; }
 
         /* نظام الإشعارات العائمة Toast */
         .toast-container {
@@ -64,7 +101,11 @@
 
 <!-- سلة المشتريات الحالية -->
 <div class="card" style="border: 2px solid #059669;">
-    <h3 style="color: #4ade80;">🛒 سلة المشتريات الحالية</h3>
+    <div class="cart-header">
+        <h3 style="color: #4ade80;">🛒 سلة المشتريات الحالية</h3>
+        <button id="last-receipt-btn" class="btn btn-secondary" style="display: none;" onclick="openLastReceipt()">📄 عرض / نسخ آخر إيصال</button>
+    </div>
+
     <table>
         <thead>
             <tr>
@@ -80,9 +121,19 @@
             <tr><td colspan="6" style="color: #94a3b8;">السلة فارغة حالياً</td></tr>
         </tbody>
     </table>
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 15px;">
-        <h3 id="cart-total" style="color: #4ade80;">الإجمالي الكلي: 0 دج</h3>
-        <button class="btn" style="padding: 12px 25px; font-size: 16px;" onclick="checkoutCart()">إتمام البيع وتفريغ السلة ✅</button>
+
+    <div class="cart-footer">
+        <div>
+            <h3 id="cart-total" style="color: #4ade80;">الإجمالي الكلي: 0 دج</h3>
+        </div>
+
+        <div class="change-box">
+            <span style="font-size: 13px; color: #94a3b8;">المبلغ المدفوع:</span>
+            <input type="number" id="paid-amount" placeholder="0" oninput="updateChangeDisplay()">
+            <span id="change-result" style="font-size: 13px; color: #38bdf8; font-weight: bold;">الباقي للزبون: 0 دج</span>
+        </div>
+
+        <button id="checkout-btn" class="btn" style="padding: 12px 25px; font-size: 16px;" onclick="checkoutCart()">إتمام البيع وتفريغ السلة ✅</button>
     </div>
 </div>
 
@@ -110,6 +161,31 @@
     </table>
 </div>
 
+<!-- نافذة معاينة ونسخ آخر إيصال (تفتح يدوياً فقط عند الحاجة) -->
+<div id="receipt-modal" class="receipt-modal" onclick="closeReceiptOnBackdrop(event)">
+    <div class="receipt-box">
+        <h3>🧾 تفاصيل آخر عملية بيع</h3>
+        <div id="receipt-meta" class="receipt-meta"></div>
+        <table>
+            <thead>
+                <tr>
+                    <th>القطعة</th>
+                    <th>الفرع</th>
+                    <th>الكمية</th>
+                    <th>السعر</th>
+                    <th>المجموع</th>
+                </tr>
+            </thead>
+            <tbody id="receipt-items-body"></tbody>
+        </table>
+        <div id="receipt-total" class="receipt-total"></div>
+        <div class="receipt-btns">
+            <button class="btn btn-secondary" onclick="copyReceiptText()">📋 نسخ نص الإيصال</button>
+            <button class="btn btn-danger" onclick="closeReceiptModal()">إغلاق</button>
+        </div>
+    </div>
+</div>
+
 <script>
     const SUPABASE_URL = 'https://fktettiegkmaijnokrwr.supabase.co';
     const SUPABASE_ANON_KEY = 'sb_publishable_lZ6v_qG8aYXpwLY8VxPNfA_BfT87Jsh';
@@ -118,7 +194,10 @@
 
     let currentWorkerEmail = '';
     let workerInventoryData = [];
-    let cart = []; // مصفوفة السلة
+    let cart = [];
+    let currentCartTotal = 0;
+    let isCheckingOut = false;
+    let lastReceipt = null;
 
     function showToast(message, type = 'success') {
         const container = document.getElementById('toast-container');
@@ -178,18 +257,19 @@
         if (!isAllowed) return;
         document.body.style.display = 'block';
         watchCurrentUserRole();
-        fetchWorkerInventory();
+        await fetchWorkerInventory();
     }
 
     async function fetchWorkerInventory() {
         const { data, error } = await db.from('inventory').select('*').order('id', { ascending: true });
         if (error) {
             showToast('تعذر جلب المخزون: ' + error.message, 'error');
-            return;
+            return [];
         }
         workerInventoryData = data || [];
         populateWorkerBranches();
         filterWorkerTable();
+        return workerInventoryData;
     }
 
     function populateWorkerBranches() {
@@ -222,9 +302,15 @@
                 tbody.innerHTML += `<tr>
                     <td>${item.name || ''}</td>
                     <td>${item.branch || '-'}</td>
-                    <td>${item.selling_price || 0} دج</td>
+                    <td>${Number(item.selling_price || 0).toLocaleString()} دج</td>
                     <td class="${!isAvailable ? 'out-of-stock' : ''}">${isAvailable ? qty : 'نفذت'}</td>
-                    <td><input type="number" id="qty-${item.id}" value="1" min="1" max="${qty}" ${!isAvailable ? 'disabled' : ''}></td>
+                    <td>
+                        <div class="qty-controls">
+                            <input type="number" id="qty-${item.id}" value="1" min="1" max="${qty}" ${!isAvailable ? 'disabled' : ''}>
+                            <button type="button" class="mini-btn" onclick="stepQty(${item.id}, 1, ${qty})" ${!isAvailable ? 'disabled' : ''}>+1</button>
+                            <button type="button" class="mini-btn" onclick="setMaxQty(${item.id}, ${qty})" ${!isAvailable ? 'disabled' : ''}>الكل</button>
+                        </div>
+                    </td>
                     <td><button class="btn" onclick="addToCart(${item.id})" ${!isAvailable ? 'disabled' : ''}>إضافة للسلة ➕</button></td>
                 </tr>`;
             });
@@ -233,13 +319,26 @@
         }
     }
 
-    // إضافة منتج للسلة المحلية
+    window.stepQty = function(itemId, delta, maxQty) {
+        const input = document.getElementById(`qty-${itemId}`);
+        if (!input || input.disabled) return;
+        const current = parseInt(input.value, 10) || 0;
+        const next = Math.min(maxQty, Math.max(1, current + delta));
+        input.value = next;
+    };
+
+    window.setMaxQty = function(itemId, maxQty) {
+        const input = document.getElementById(`qty-${itemId}`);
+        if (!input || input.disabled || maxQty <= 0) return;
+        input.value = maxQty;
+    };
+
     window.addToCart = function(itemId) {
         const item = workerInventoryData.find(i => i.id === itemId);
         if (!item) return;
 
         const inputElem = document.getElementById(`qty-${itemId}`);
-        const reqQty = parseInt(inputElem.value) || 0;
+        const reqQty = parseInt(inputElem.value, 10) || 0;
         const maxQty = Number(item.quantity) || 0;
 
         if (reqQty <= 0 || reqQty > maxQty) {
@@ -260,8 +359,8 @@
                 name: item.name,
                 branch: item.branch,
                 price: Number(item.selling_price) || 0,
-                qty: reqQty,
-                max: maxQty
+                buyingPrice: Number(item.buying_price) || 0,
+                qty: reqQty
             });
         }
         renderCart();
@@ -279,18 +378,40 @@
                 totalSum += subTotal;
                 tbody.innerHTML += `<tr>
                     <td>${item.name}</td>
-                    <td>${item.branch}</td>
-                    <td>${item.price} دج</td>
+                    <td>${item.branch || '-'}</td>
+                    <td>${item.price.toLocaleString()} دج</td>
                     <td>${item.qty}</td>
-                    <td>${subTotal} دج</td>
+                    <td>${subTotal.toLocaleString()} دج</td>
                     <td><button class="btn btn-danger" onclick="removeFromCart(${index})">حذف</button></td>
                 </tr>`;
             });
         } else {
             tbody.innerHTML = `<tr><td colspan="6" style="color: #94a3b8;">السلة فارغة حالياً</td></tr>`;
         }
+        currentCartTotal = totalSum;
         document.getElementById('cart-total').textContent = `الإجمالي الكلي: ${totalSum.toLocaleString()} دج`;
+        updateChangeDisplay();
     }
+
+    window.updateChangeDisplay = function() {
+        const paid = parseFloat(document.getElementById('paid-amount').value) || 0;
+        const resultEl = document.getElementById('change-result');
+
+        if (paid <= 0) {
+            resultEl.style.color = '#38bdf8';
+            resultEl.textContent = 'الباقي للزبون: 0 دج';
+            return;
+        }
+
+        const diff = paid - currentCartTotal;
+        if (diff < 0) {
+            resultEl.style.color = '#f87171';
+            resultEl.textContent = `المتبقي على الزبون: ${Math.abs(diff).toLocaleString()} دج`;
+        } else {
+            resultEl.style.color = '#4ade80';
+            resultEl.textContent = `الباقي للزبون: ${diff.toLocaleString()} دج`;
+        }
+    };
 
     window.removeFromCart = function(index) {
         cart.splice(index, 1);
@@ -298,49 +419,170 @@
         showToast("تم حذف العنصر من السلة", "warning");
     };
 
-    // إتمام الشراء لكل عناصر السلة دفعة واحدة
+    async function logInventoryMovement(entry) {
+        try {
+            await db.from('inventory_logs').insert([entry]);
+        } catch (_) {
+            // تجاهل إذا لم يكن جدول inventory_logs منشأً
+        }
+    }
+
+    window.openLastReceipt = function() {
+        if (!lastReceipt) return;
+        const metaEl = document.getElementById('receipt-meta');
+        const bodyEl = document.getElementById('receipt-items-body');
+        const totalEl = document.getElementById('receipt-total');
+
+        metaEl.innerHTML = `
+            <div><strong>البائع:</strong> ${lastReceipt.seller || '-'}</div>
+            <div><strong>التاريخ والوقت:</strong> ${lastReceipt.timestamp}</div>
+        `;
+
+        bodyEl.innerHTML = '';
+        lastReceipt.items.forEach(item => {
+            const sub = item.qty * item.price;
+            bodyEl.innerHTML += `<tr>
+                <td>${item.name}</td>
+                <td>${item.branch || '-'}</td>
+                <td>${item.qty}</td>
+                <td>${item.price.toLocaleString()} دج</td>
+                <td>${sub.toLocaleString()} دج</td>
+            </tr>`;
+        });
+
+        totalEl.textContent = `الإجمالي الكلي: ${lastReceipt.total.toLocaleString()} دج`;
+        document.getElementById('receipt-modal').style.display = 'flex';
+    };
+
+    window.copyReceiptText = async function() {
+        if (!lastReceipt) return;
+        const lines = [
+            `🧾 وصل عملية بيع - ${lastReceipt.timestamp}`,
+            `البائع: ${lastReceipt.seller}`,
+            '------------------------',
+            ...lastReceipt.items.map(i => `• ${i.name} (${i.branch || '-'}) × ${i.qty} = ${(i.qty * i.price).toLocaleString()} دج`),
+            '------------------------',
+            `الإجمالي: ${lastReceipt.total.toLocaleString()} دج`
+        ];
+        try {
+            await navigator.clipboard.writeText(lines.join('\n'));
+            showToast('تم نسخ تفاصيل الإيصال للحافظة', 'success');
+        } catch (_) {
+            showToast('تعذر النسخ التلقائي', 'warning');
+        }
+    };
+
+    window.closeReceiptModal = function() {
+        document.getElementById('receipt-modal').style.display = 'none';
+    };
+
+    window.closeReceiptOnBackdrop = function(event) {
+        if (event.target.id === 'receipt-modal') {
+            closeReceiptModal();
+        }
+    };
+
     window.checkoutCart = async function() {
+        if (isCheckingOut) return;
         if (!(await checkCurrentUserRole())) return;
         if (cart.length === 0) {
             showToast("السلة فارغة!", "warning");
             return;
         }
 
-        for (let cartItem of cart) {
-            const freshItem = workerInventoryData.find(i => i.id === cartItem.id);
-            const currentQty = freshItem ? Number(freshItem.quantity) || 0 : 0;
+        isCheckingOut = true;
+        const checkoutBtn = document.getElementById('checkout-btn');
+        checkoutBtn.disabled = true;
 
-            if (cartItem.qty > currentQty) {
-                showToast(`عذراً، المنتج "${cartItem.name}" لم يعد بالكمية المطلوبة في المخزون.`, "error");
-                return;
+        try {
+            const latestInventory = await fetchWorkerInventory();
+            const preparedSales = [];
+
+            for (const cartItem of cart) {
+                const freshItem = latestInventory.find(i => i.id === cartItem.id);
+                const currentQty = freshItem ? Number(freshItem.quantity) || 0 : 0;
+
+                if (!freshItem || cartItem.qty > currentQty) {
+                    showToast(`الكمية المتوفرة لـ "${cartItem.name}" الآن (${currentQty}) أقل من المطلوب (${cartItem.qty})!`, "error");
+                    return;
+                }
+
+                const newQty = currentQty - cartItem.qty;
+                const totalPrice = cartItem.qty * cartItem.price;
+                const unitCost = freshItem.buying_price !== undefined ? Number(freshItem.buying_price) || 0 : cartItem.buyingPrice;
+
+                preparedSales.push({
+                    id: cartItem.id,
+                    name: cartItem.name,
+                    branch: freshItem.branch || cartItem.branch,
+                    qty: cartItem.qty,
+                    price: cartItem.price,
+                    previousQty: currentQty,
+                    newQty,
+                    totalPrice,
+                    costValue: unitCost * cartItem.qty
+                });
             }
 
-            const newQty = currentQty - cartItem.qty;
-            const totalPrice = cartItem.qty * cartItem.price;
+            let grandTotal = 0;
+            for (const item of preparedSales) {
+                const { error: updateError } = await db
+                    .from('inventory')
+                    .update({ quantity: item.newQty })
+                    .eq('id', item.id);
 
-            const { error: updateError } = await db.from('inventory').update({ quantity: newQty }).eq('id', cartItem.id);
-            if (updateError) {
-                showToast("حدث خطأ أثناء تحديث المخزون: " + updateError.message, "error");
-                return;
+                if (updateError) {
+                    showToast("حدث خطأ أثناء خصم الكمية من المخزون: " + updateError.message, "error");
+                    return;
+                }
+
+                const { error: saleError } = await db
+                    .from('sales')
+                    .insert([{
+                        item_name: item.name,
+                        branch: item.branch,
+                        quantity_sold: item.qty,
+                        total_price: item.totalPrice,
+                        worker_email: currentWorkerEmail
+                    }]);
+
+                if (saleError) {
+                    showToast("تم تحديث المخزون لكن تعذر تسجيل عملية البيع: " + saleError.message, "error");
+                    return;
+                }
+
+                await logInventoryMovement({
+                    item_id: item.id,
+                    item_name: item.name,
+                    branch: item.branch,
+                    action_type: 'sale',
+                    quantity_change: -item.qty,
+                    previous_quantity: item.previousQty,
+                    new_quantity: item.newQty,
+                    cost_impact: item.costValue,
+                    actor_email: currentWorkerEmail
+                });
+
+                grandTotal += item.totalPrice;
             }
 
-            const { error: saleError } = await db.from('sales').insert([{
-                item_name: cartItem.name,
-                branch: cartItem.branch,
-                quantity_sold: cartItem.qty,
-                total_price: totalPrice,
-                worker_email: currentWorkerEmail
-            }]);
-            if (saleError) {
-                showToast("تم تحديث المخزون لكن حدث خطأ في تسجيل المبيعات: " + saleError.message, "error");
-                return;
-            }
+            lastReceipt = {
+                seller: currentWorkerEmail,
+                timestamp: new Date().toLocaleString('ar-DZ'),
+                items: [...preparedSales],
+                total: grandTotal
+            };
+            document.getElementById('last-receipt-btn').style.display = 'inline-block';
+
+            showToast(`تم إتمام البيع بنجاح (${grandTotal.toLocaleString()} دج)!`, "success");
+            cart = [];
+            document.getElementById('paid-amount').value = '';
+            renderCart();
+            await fetchWorkerInventory();
+        } finally {
+            isCheckingOut = false;
+            checkoutBtn.disabled = false;
         }
-
-        showToast("تم إتمام عملية البيع بنجاح وتحديث المخزون وسجل المبيعات!", "success");
-        cart = [];
-        renderCart();
-        fetchWorkerInventory();
     };
 
     window.logout = async function() {

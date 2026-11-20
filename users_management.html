@@ -7,17 +7,27 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         body { font-family: Tahoma, sans-serif; background: #0f172a; color: #fff; margin: 0; padding: 20px; display: none; }
-        .header { background: #1e293b; padding: 15px 20px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+        .header { background: #1e293b; padding: 15px 20px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); flex-wrap: wrap; gap: 10px; }
         h2 { color: #38bdf8; margin: 0; }
         .card { background: #1e293b; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); border: 2px solid #7c3aed; }
         input, select { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #475569; border-radius: 6px; background: #0f172a; color: #fff; box-sizing: border-box; }
+        .role-select { width: auto; min-width: 160px; padding: 6px 10px; margin: 0; font-size: 13px; }
         button { background: #7c3aed; border: none; padding: 12px 20px; border-radius: 6px; color: #fff; font-size: 16px; cursor: pointer; width: 100%; margin-top: 10px; }
-        button:hover { background: #6d28d9; }
+        button:hover:not(:disabled) { background: #6d28d9; }
+        button:disabled { opacity: 0.45; cursor: not-allowed; }
         table { width: 100%; border-collapse: collapse; margin-top: 15px; }
         th, td { border: 1px solid #475569; padding: 10px; text-align: center; font-size: 14px; }
         th { background: #334155; color: #38bdf8; }
-        .btn-delete { background: #ef4444; padding: 6px 12px; font-size: 13px; border: none; border-radius: 4px; color: #fff; cursor: pointer; }
+        .btn-suspend { background: #d97706; padding: 6px 10px; font-size: 12px; border: none; border-radius: 4px; color: #fff; cursor: pointer; width: auto; margin: 0 0 0 5px; }
+        .btn-suspend:hover:not(:disabled) { background: #b45309; }
+        .btn-activate { background: #059669; padding: 6px 10px; font-size: 12px; border: none; border-radius: 4px; color: #fff; cursor: pointer; width: auto; margin: 0 0 0 5px; }
+        .btn-activate:hover:not(:disabled) { background: #047857; }
+        .btn-delete { background: #ef4444; padding: 6px 12px; font-size: 12px; border: none; border-radius: 4px; color: #fff; cursor: pointer; width: auto; margin: 0; }
+        .btn-delete:hover:not(:disabled) { background: #dc2626; }
         .nav-btn { background: #0284c7; color: #fff; text-decoration: none; padding: 8px 15px; border-radius: 6px; font-size: 14px; display: inline-block; }
+        .self-badge { background: #0284c7; color: #fff; padding: 2px 7px; border-radius: 10px; font-size: 11px; margin-right: 6px; }
+        .status-suspended { color: #f87171; font-weight: bold; }
+        .status-active { color: #4ade80; font-weight: bold; }
 
         /* نظام الإشعارات العائمة Toast */
         .toast-container {
@@ -59,7 +69,7 @@
 </div>
 
 <div class="card">
-    <p style="color: #94a3b8; margin-top: 0;">إنشاء حسابات جديدة للعمال، المستثمرين، أو المديرين، والتحكم بصلاحياتهم مباشرة.</p>
+    <p style="color: #94a3b8; margin-top: 0;">إنشاء حسابات جديدة للعمال، المستثمرين، أو المديرين، والتحكم بصلاحياتهم أو إيقافهم مؤقتاً.</p>
     
     <input type="email" id="new-user-email" placeholder="البريد الإلكتروني للمستخدم الجديد">
     <input type="password" id="new-user-password" placeholder="كلمة المرور (6 أحرف على الأقل)">
@@ -75,11 +85,12 @@
             <tr>
                 <th>البريد الإلكتروني</th>
                 <th>الصلاحية (الدور)</th>
-                <th>الإجراء</th>
+                <th>الحالة</th>
+                <th>الإجراءات</th>
             </tr>
         </thead>
         <tbody id="users-page-body">
-            <tr><td colspan="3" style="color: #94a3b8;">جاري تحميل المستخدمين...</td></tr>
+            <tr><td colspan="4" style="color: #94a3b8;">جاري تحميل المستخدمين...</td></tr>
         </tbody>
     </table>
 </div>
@@ -150,7 +161,15 @@
         if (!isAllowed) return;
         document.body.style.display = 'block';
         watchCurrentUserRole();
-        fetchUsers();
+        await fetchUsers();
+    }
+
+    function escapeAttr(str) {
+        return String(str || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    function isSelfAccount(email) {
+        return Boolean(email && currentUserEmail && email.toLowerCase() === currentUserEmail.toLowerCase());
     }
 
     async function fetchUsers() {
@@ -159,24 +178,71 @@
         tbody.innerHTML = '';
 
         if (error) {
-            tbody.innerHTML = `<tr><td colspan="3" style="color: #f87171;">خطأ في جلب المستخدمين: ${error.message}</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="4" style="color: #f87171;">خطأ في جلب المستخدمين: ${error.message}</td></tr>`;
             return;
         }
 
         if (data && data.length > 0) {
             data.forEach(user => {
+                const safeEmail = escapeAttr(user.email);
+                const isSelf = isSelfAccount(user.email);
+                const isSuspended = user.role === 'suspended';
+                const currentSelectRole = isSuspended ? 'worker' : user.role;
+
+                const statusHtml = isSuspended
+                    ? '<span class="status-suspended">موقوف مؤقتاً</span>'
+                    : '<span class="status-active">نشط</span>';
+
+                const toggleStatusBtn = isSuspended
+                    ? `<button class="btn-activate" ${isSelf ? 'disabled' : ''} onclick="updateUserRole('${safeEmail}', 'worker')">تفعيل</button>`
+                    : `<button class="btn-suspend" ${isSelf ? 'disabled' : ''} onclick="updateUserRole('${safeEmail}', 'suspended')">إيقاف مؤقت</button>`;
+
                 tbody.innerHTML += `<tr>
-                    <td>${user.email}</td>
-                    <td style="font-weight: bold; color: #38bdf8;">${user.role}</td>
+                    <td>${user.email}${isSelf ? '<span class="self-badge">أنت</span>' : ''}</td>
                     <td>
-                        <button class="btn-delete" onclick="deleteUser('${user.email}')">حذف الصلاحية</button>
+                        <select class="role-select" ${isSelf ? 'disabled' : ''} onchange="updateUserRole('${safeEmail}', this.value)">
+                            <option value="worker" ${currentSelectRole === 'worker' ? 'selected' : ''}>عامل (Worker)</option>
+                            <option value="boss" ${currentSelectRole === 'boss' ? 'selected' : ''}>مستثمر (Boss)</option>
+                            <option value="admin" ${currentSelectRole === 'admin' ? 'selected' : ''}>مدير (Admin)</option>
+                        </select>
+                    </td>
+                    <td>${statusHtml}</td>
+                    <td>
+                        ${toggleStatusBtn}
+                        <button class="btn-delete" ${isSelf ? 'disabled' : ''} onclick="deleteUser('${safeEmail}')">حذف الصلاحية</button>
                     </td>
                 </tr>`;
             });
         } else {
-            tbody.innerHTML = `<tr><td colspan="3" style="color: #94a3b8;">لا توجد مستخدمين مسجلين</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="4" style="color: #94a3b8;">لا توجد مستخدمين مسجلين</td></tr>`;
         }
     }
+
+    window.updateUserRole = async function(email, newRole) {
+        if (!(await checkCurrentUserRole())) return;
+        if (isSelfAccount(email)) {
+            showToast('لا يمكنك تعديل صلاحية أو حالة حسابك الحالي من هنا', 'warning');
+            await fetchUsers();
+            return;
+        }
+
+        const { error } = await db
+            .from('users')
+            .update({ role: newRole })
+            .eq('email', email);
+
+        if (error) {
+            showToast('فشل تحديث الصلاحية: ' + error.message, 'error');
+            await fetchUsers();
+            return;
+        }
+
+        const msg = newRole === 'suspended'
+            ? `تم إيقاف حساب "${email}" مؤقتاً`
+            : `تم تحديث صلاحية "${email}" إلى ${newRole}`;
+        showToast(msg, 'success');
+        await fetchUsers();
+    };
 
     async function createNewUser() {
         if (!(await checkCurrentUserRole())) return;
@@ -188,33 +254,45 @@
             showToast('الرجاء إدخال البريد الإلكتروني وكلمة المرور', 'warning');
             return;
         }
+        if (password.length < 6) {
+            showToast('كلمة المرور يجب أن تكون 6 أحرف على الأقل', 'warning');
+            return;
+        }
 
         const { error: authError } = await db.auth.signUp({ email, password });
         if (authError) {
-            showToast('فشل إنشاء الحساب: ' + authError.message, 'error');
+            const msg = /already registered|already exists/i.test(authError.message)
+                ? 'هذا البريد الإلكتروني مسجل مسبقاً في نظام الدخول.'
+                : 'فشل إنشاء الحساب: ' + authError.message;
+            showToast(msg, 'error');
             return;
         }
 
         const { error: dbError } = await db.from('users').insert([{ email, role }]);
         if (dbError) {
-            showToast('تم إنشاء الحساب لكن فشل تسجيل الصلاحية: ' + dbError.message, 'error');
+            showToast('تم إنشاء الحساب في Auth لكن تعذر تسجيل الصلاحية في جدول users: ' + dbError.message, 'error');
         } else {
             showToast('تم إنشاء المستخدم وصلاحيته بنجاح!', 'success');
             document.getElementById('new-user-email').value = '';
             document.getElementById('new-user-password').value = '';
-            fetchUsers();
+            await fetchUsers();
         }
     }
 
     async function deleteUser(email) {
         if (!(await checkCurrentUserRole())) return;
+        if (isSelfAccount(email)) {
+            showToast('لا يمكنك حذف صلاحية حسابك الحالي', 'warning');
+            return;
+        }
+
         if (confirm(`هل أنت متأكد من حذف صلاحية المستخدم "${email}"؟`)) {
             const { error } = await db.from('users').delete().eq('email', email);
             if (error) {
                 showToast('فشل الحذف: ' + error.message, 'error');
             } else {
                 showToast('تم حذف الصلاحية بنجاح', 'success');
-                fetchUsers();
+                await fetchUsers();
             }
         }
     }
