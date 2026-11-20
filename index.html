@@ -6,14 +6,26 @@
     <title>تسجيل الدخول - نظام إدارة الشركة</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
-        body { font-family: Tahoma, sans-serif; background: #0f172a; color: #fff; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        body { font-family: Tahoma, sans-serif; background: #0f172a; color: #fff; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; padding: 15px; box-sizing: border-box; }
         .login-card { background: #1e293b; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); width: 100%; max-width: 400px; }
         h2 { text-align: center; margin-bottom: 20px; color: #38bdf8; }
         input { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #475569; border-radius: 6px; background: #0f172a; color: #fff; box-sizing: border-box; }
         button { width: 100%; padding: 12px; background: #0284c7; border: none; border-radius: 6px; color: #fff; font-size: 16px; cursor: pointer; margin-top: 10px; }
-        button:hover { background: #0369a1; }
+        button:hover:not(:disabled) { background: #0369a1; }
         button:disabled { background: #475569; cursor: not-allowed; }
-        #error-msg { color: #f87171; text-align: center; margin-top: 12px; font-size: 14px; line-height: 1.5; }
+        #error-msg { color: #f87171; text-align: center; margin-top: 12px; font-size: 14px; line-height: 1.6; }
+        #support-box { display: none; text-align: center; margin-top: 14px; }
+        .support-link {
+            display: inline-block;
+            background: #7c3aed;
+            color: #fff;
+            text-decoration: none;
+            padding: 9px 16px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: bold;
+        }
+        .support-link:hover { background: #6d28d9; }
     </style>
 </head>
 <body>
@@ -24,6 +36,9 @@
     <input type="password" id="password" placeholder="كلمة المرور" required>
     <button id="login-btn" onclick="handleLogin()">دخول للنظام</button>
     <div id="error-msg"></div>
+    <div id="support-box">
+        <a id="support-link-btn" href="support_chat.html" class="support-link">💬 تواصل مع المسؤول أو الدعم</a>
+    </div>
 </div>
 
 <script>
@@ -38,8 +53,20 @@
         worker: 'worker.html'
     };
 
-    function setError(msg) {
+    function setError(msg, showSupport = false, userEmail = '') {
         document.getElementById('error-msg').textContent = msg;
+        const supportBox = document.getElementById('support-box');
+        const supportLink = document.getElementById('support-link-btn');
+
+        if (showSupport) {
+            const targetEmail = userEmail || document.getElementById('email').value.trim();
+            supportLink.href = targetEmail
+                ? `support_chat.html?email=${encodeURIComponent(targetEmail)}`
+                : 'support_chat.html';
+            supportBox.style.display = 'block';
+        } else {
+            supportBox.style.display = 'none';
+        }
     }
 
     async function redirectByRole(email) {
@@ -51,25 +78,25 @@
 
         if (error) {
             await db.auth.signOut();
-            setError('تعذر التحقق من صلاحية الحساب حالياً، حاول مرة أخرى.');
+            setError('تعذر التحقق من صلاحية الحساب حالياً، حاول مرة أخرى.', true, email);
             return false;
         }
 
         if (!userData) {
             await db.auth.signOut();
-            setError('الحساب موجود في نظام الدخول ولكن لم تُمنح له صلاحية في جدول المستخدمين بعد.');
+            setError('الحساب موجود في نظام الدخول ولكن لم تُمنح له صلاحية في جدول المستخدمين بعد.', true, email);
             return false;
         }
 
         if (userData.role === 'suspended') {
             await db.auth.signOut();
-            setError('تم إيقاف هذا الحساب مؤقتاً من قِبل الإدارة.');
+            setError('تم إيقاف هذا الحساب مؤقتاً من قِبل الإدارة.', true, email);
             return false;
         }
 
         if (!roleRoutes[userData.role]) {
             await db.auth.signOut();
-            setError('حسابك لا يملك صلاحية مفعّلة في النظام أو تم سحبها.');
+            setError('حسابك لا يملك صلاحية مفعّلة في النظام أو تم سحبها.', true, email);
             return false;
         }
 
@@ -82,9 +109,9 @@
         const password = document.getElementById('password').value;
         const btn = document.getElementById('login-btn');
 
-        setError('');
+        setError('', false);
         if (!email || !password) {
-            setError('الرجاء إدخال البريد الإلكتروني وكلمة المرور.');
+            setError('الرجاء إدخال البريد الإلكتروني وكلمة المرور.', false);
             return;
         }
 
@@ -95,7 +122,7 @@
         if (error || !data.user) {
             btn.disabled = false;
             btn.textContent = 'دخول للنظام';
-            setError('البريد الإلكتروني أو كلمة المرور غير صحيحة.');
+            setError('البريد الإلكتروني أو كلمة المرور غير صحيحة.', false);
             return;
         }
 

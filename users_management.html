@@ -8,26 +8,32 @@
     <style>
         body { font-family: Tahoma, sans-serif; background: #0f172a; color: #fff; margin: 0; padding: 20px; display: none; }
         .header { background: #1e293b; padding: 15px 20px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); flex-wrap: wrap; gap: 10px; }
-        h2 { color: #38bdf8; margin: 0; }
+        h2, h3 { color: #38bdf8; margin: 0; }
         .card { background: #1e293b; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); border: 2px solid #7c3aed; }
-        input, select { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #475569; border-radius: 6px; background: #0f172a; color: #fff; box-sizing: border-box; }
-        .role-select { width: auto; min-width: 160px; padding: 6px 10px; margin: 0; font-size: 13px; }
+        input, select, textarea { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #475569; border-radius: 6px; background: #0f172a; color: #fff; box-sizing: border-box; font-family: Tahoma, sans-serif; }
+        .role-select { width: auto; min-width: 150px; padding: 6px 10px; margin: 0; font-size: 13px; }
         button { background: #7c3aed; border: none; padding: 12px 20px; border-radius: 6px; color: #fff; font-size: 16px; cursor: pointer; width: 100%; margin-top: 10px; }
         button:hover:not(:disabled) { background: #6d28d9; }
         button:disabled { opacity: 0.45; cursor: not-allowed; }
         table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-        th, td { border: 1px solid #475569; padding: 10px; text-align: center; font-size: 14px; }
+        th, td { border: 1px solid #475569; padding: 10px; text-align: center; font-size: 13px; }
         th { background: #334155; color: #38bdf8; }
-        .btn-suspend { background: #d97706; padding: 6px 10px; font-size: 12px; border: none; border-radius: 4px; color: #fff; cursor: pointer; width: auto; margin: 0 0 0 5px; }
-        .btn-suspend:hover:not(:disabled) { background: #b45309; }
-        .btn-activate { background: #059669; padding: 6px 10px; font-size: 12px; border: none; border-radius: 4px; color: #fff; cursor: pointer; width: auto; margin: 0 0 0 5px; }
-        .btn-activate:hover:not(:disabled) { background: #047857; }
-        .btn-delete { background: #ef4444; padding: 6px 12px; font-size: 12px; border: none; border-radius: 4px; color: #fff; cursor: pointer; width: auto; margin: 0; }
-        .btn-delete:hover:not(:disabled) { background: #dc2626; }
+        .btn-suspend { background: #d97706; padding: 6px 10px; font-size: 12px; border: none; border-radius: 4px; color: #fff; cursor: pointer; width: auto; margin: 0 0 4px 4px; }
+        .btn-activate { background: #059669; padding: 6px 10px; font-size: 12px; border: none; border-radius: 4px; color: #fff; cursor: pointer; width: auto; margin: 0 0 4px 4px; }
+        .btn-chat-toggle { background: #0284c7; padding: 6px 10px; font-size: 12px; border: none; border-radius: 4px; color: #fff; cursor: pointer; width: auto; margin: 0 0 4px 4px; }
+        .btn-delete { background: #ef4444; padding: 6px 12px; font-size: 12px; border: none; border-radius: 4px; color: #fff; cursor: pointer; width: auto; margin: 0 0 4px 0; }
         .nav-btn { background: #0284c7; color: #fff; text-decoration: none; padding: 8px 15px; border-radius: 6px; font-size: 14px; display: inline-block; }
         .self-badge { background: #0284c7; color: #fff; padding: 2px 7px; border-radius: 10px; font-size: 11px; margin-right: 6px; }
         .status-suspended { color: #f87171; font-weight: bold; }
         .status-active { color: #4ade80; font-weight: bold; }
+
+        .admin-chat-box { background: #0f172a; border: 1px solid #334155; border-radius: 10px; padding: 14px; max-height: 260px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; margin: 10px 0; }
+        .msg { max-width: 80%; padding: 9px 12px; border-radius: 8px; font-size: 13px; line-height: 1.5; }
+        .msg-user { align-self: flex-start; background: #334155; color: #fff; }
+        .msg-admin { align-self: flex-end; background: #059669; color: #fff; }
+        .reply-row { display: flex; gap: 8px; align-items: center; }
+        .reply-row input { margin: 0; flex: 1; }
+        .reply-row button { width: auto; margin: 0; padding: 11px 18px; font-size: 14px; }
 
         /* نظام الإشعارات العائمة Toast */
         .toast-container {
@@ -86,13 +92,31 @@
                 <th>البريد الإلكتروني</th>
                 <th>الصلاحية (الدور)</th>
                 <th>الحالة</th>
+                <th>الشات</th>
                 <th>الإجراءات</th>
             </tr>
         </thead>
         <tbody id="users-page-body">
-            <tr><td colspan="4" style="color: #94a3b8;">جاري تحميل المستخدمين...</td></tr>
+            <tr><td colspan="5" style="color: #94a3b8;">جاري تحميل المستخدمين...</td></tr>
         </tbody>
     </table>
+</div>
+
+<!-- صندوق رسائل المستخدمين مع المسؤول (عبر users) -->
+<div class="card" style="border-color: #0284c7;">
+    <h3>💬 رسائل التواصل والدعم مع المستخدمين</h3>
+    <select id="chat-user-select" onchange="loadAdminChatThread()">
+        <option value="">اختر حساباً لعرض محادثته...</option>
+    </select>
+
+    <div id="admin-chat-box" class="admin-chat-box">
+        <div style="color: #94a3b8; text-align: center; margin: auto; font-size: 13px;">اختر حساباً من القائمة لعرض الرسائل.</div>
+    </div>
+
+    <div class="reply-row">
+        <input type="text" id="admin-reply-input" placeholder="اكتب رد المسؤول هنا...">
+        <button onclick="sendAdminReply()" style="background: #059669;">إرسال الرد</button>
+    </div>
 </div>
 
 <script>
@@ -102,6 +126,7 @@
     const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     let currentUserEmail = '';
+    let lastUsersList = [];
 
     function showToast(message, type = 'success') {
         const container = document.getElementById('toast-container');
@@ -172,26 +197,161 @@
         return Boolean(email && currentUserEmail && email.toLowerCase() === currentUserEmail.toLowerCase());
     }
 
-    async function fetchUsers() {
-        const { data, error } = await db.from('users').select('*').order('email', { ascending: true });
-        const tbody = document.getElementById('users-page-body');
-        tbody.innerHTML = '';
+    function parseChatBlob(raw) {
+        if (!raw) return { blocked: false, messages: [] };
+        try {
+            const parsed = JSON.parse(raw);
+            if (parsed && typeof parsed === 'object') {
+                return {
+                    blocked: Boolean(parsed.blocked),
+                    messages: Array.isArray(parsed.messages) ? parsed.messages : []
+                };
+            }
+        } catch (_) {}
+        return {
+            blocked: false,
+            messages: [{ sender: 'user', text: String(raw), time: '' }]
+        };
+    }
 
-        if (error) {
-            tbody.innerHTML = `<tr><td colspan="4" style="color: #f87171;">خطأ في جلب المستخدمين: ${error.message}</td></tr>`;
+    function getUserChatBlob(email) {
+        const u = lastUsersList.find(item => (item.email || '').toLowerCase() === (email || '').toLowerCase());
+        return parseChatBlob(u?.chat_data);
+    }
+
+    function refreshChatUserOptions() {
+        const select = document.getElementById('chat-user-select');
+        const currentVal = select.value;
+
+        select.innerHTML = '<option value="">اختر حساباً لعرض محادثته...</option>';
+        lastUsersList.forEach(u => {
+            const em = (u.email || '').toLowerCase();
+            if (!em) return;
+            const blob = parseChatBlob(u.chat_data);
+            const userMsgsCount = blob.messages.filter(m => m.sender === 'user').length;
+            const suffix = userMsgsCount > 0 ? ` (${userMsgsCount} رسالة)` : '';
+            select.innerHTML += `<option value="${escapeAttr(em)}">${em}${suffix}</option>`;
+        });
+        select.value = currentVal;
+    }
+
+    function loadAdminChatThread() {
+        const selected = (document.getElementById('chat-user-select').value || '').toLowerCase();
+        const box = document.getElementById('admin-chat-box');
+
+        if (!selected) {
+            box.innerHTML = `<div style="color: #94a3b8; text-align: center; margin: auto; font-size: 13px;">اختر حساباً من القائمة لعرض الرسائل.</div>`;
             return;
         }
 
-        if (data && data.length > 0) {
-            data.forEach(user => {
+        const blob = getUserChatBlob(selected);
+        box.innerHTML = '';
+        if (blob.messages.length === 0) {
+            box.innerHTML = `<div style="color: #94a3b8; text-align: center; margin: auto; font-size: 13px;">لا توجد رسائل مسجلة لهذا الحساب بعد.</div>`;
+            return;
+        }
+
+        blob.messages.forEach(msg => {
+            const isAdmin = msg.sender === 'admin';
+            box.innerHTML += `
+                <div class="msg ${isAdmin ? 'msg-admin' : 'msg-user'}">
+                    ${isAdmin ? '🛡️ أنت: ' : '👤 المستخدم: '}${escapeAttr(msg.text)}
+                </div>
+            `;
+        });
+        box.scrollTop = box.scrollHeight;
+    }
+
+    window.sendAdminReply = async function() {
+        if (!(await checkCurrentUserRole())) return;
+        const selected = (document.getElementById('chat-user-select').value || '').toLowerCase();
+        const input = document.getElementById('admin-reply-input');
+        const reply = input.value.trim();
+
+        if (!selected) {
+            showToast('اختر حساباً أولاً للرد عليه', 'warning');
+            return;
+        }
+        if (!reply) return;
+
+        const blob = getUserChatBlob(selected);
+        const nextBlob = {
+            blocked: blob.blocked,
+            messages: [...blob.messages, { sender: 'admin', text: reply, time: new Date().toISOString() }]
+        };
+
+        const { error } = await db
+            .from('users')
+            .update({ chat_data: JSON.stringify(nextBlob) })
+            .ilike('email', selected);
+
+        if (error) {
+            showToast('فشل إرسال الرد: ' + error.message, 'error');
+        } else {
+            input.value = '';
+            showToast('تم إرسال الرد للمستخدم', 'success');
+            await fetchUsers();
+        }
+    };
+
+    window.toggleUserChatAccess = async function(email) {
+        if (!(await checkCurrentUserRole())) return;
+        const normalized = (email || '').toLowerCase();
+        const blob = getUserChatBlob(normalized);
+        const nextBlocked = !blob.blocked;
+
+        const nextBlob = {
+            blocked: nextBlocked,
+            messages: blob.messages
+        };
+
+        const { error } = await db
+            .from('users')
+            .update({ chat_data: JSON.stringify(nextBlob) })
+            .ilike('email', normalized);
+
+        if (error) {
+            showToast('تعذر تحديث حالة الشات: ' + error.message, 'error');
+        } else {
+            showToast(nextBlocked ? 'تم إلغاء ميزة الشات عن هذا الحساب' : 'تمت إعادة تفعيل الشات للحساب', 'success');
+            await fetchUsers();
+        }
+    };
+
+    async function fetchUsers() {
+        const { data, error } = await db.from('users').select('*').order('email', { ascending: true });
+        const tbody = document.getElementById('users-page-body');
+
+        if (error) {
+            tbody.innerHTML = `<tr><td colspan="5" style="color: #f87171;">خطأ في جلب المستخدمين: ${error.message}</td></tr>`;
+            return;
+        }
+
+        lastUsersList = data || [];
+        refreshChatUserOptions();
+        renderUsersTable(lastUsersList);
+        loadAdminChatThread();
+    }
+
+    function renderUsersTable(list) {
+        const tbody = document.getElementById('users-page-body');
+        tbody.innerHTML = '';
+
+        if (list && list.length > 0) {
+            list.forEach(user => {
                 const safeEmail = escapeAttr(user.email);
                 const isSelf = isSelfAccount(user.email);
                 const isSuspended = user.role === 'suspended';
                 const currentSelectRole = isSuspended ? 'worker' : user.role;
+                const chatBlocked = parseChatBlob(user.chat_data).blocked;
 
                 const statusHtml = isSuspended
                     ? '<span class="status-suspended">موقوف مؤقتاً</span>'
                     : '<span class="status-active">نشط</span>';
+
+                const chatStatusHtml = chatBlocked
+                    ? '<span class="status-suspended">ملغي</span>'
+                    : '<span class="status-active">مفعل</span>';
 
                 const toggleStatusBtn = isSuspended
                     ? `<button class="btn-activate" ${isSelf ? 'disabled' : ''} onclick="updateUserRole('${safeEmail}', 'worker')">تفعيل</button>`
@@ -207,14 +367,16 @@
                         </select>
                     </td>
                     <td>${statusHtml}</td>
+                    <td>${chatStatusHtml}</td>
                     <td>
                         ${toggleStatusBtn}
+                        <button class="btn-chat-toggle" ${isSelf ? 'disabled' : ''} onclick="toggleUserChatAccess('${safeEmail}')">${chatBlocked ? 'فتح الشات' : 'إلغاء الشات'}</button>
                         <button class="btn-delete" ${isSelf ? 'disabled' : ''} onclick="deleteUser('${safeEmail}')">حذف الصلاحية</button>
                     </td>
                 </tr>`;
             });
         } else {
-            tbody.innerHTML = `<tr><td colspan="4" style="color: #94a3b8;">لا توجد مستخدمين مسجلين</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="5" style="color: #94a3b8;">لا توجد مستخدمين مسجلين</td></tr>`;
         }
     }
 

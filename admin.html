@@ -17,7 +17,17 @@
         th, td { border: 1px solid #475569; padding: 10px; text-align: center; font-size: 14px; }
         th { background: #334155; color: #38bdf8; }
         .logout-btn { background: #ef4444; width: auto; padding: 8px 15px; font-size: 14px; margin: 0; }
-        .nav-btn { background: #0284c7; color: #fff; text-decoration: none; padding: 8px 15px; border-radius: 6px; font-size: 14px; display: inline-block; }
+        .nav-btn { background: #0284c7; color: #fff; text-decoration: none; padding: 8px 15px; border-radius: 6px; font-size: 14px; display: inline-flex; align-items: center; gap: 6px; position: relative; }
+        .chat-badge {
+            background: #ef4444;
+            color: #fff;
+            font-size: 11px;
+            font-weight: bold;
+            padding: 2px 7px;
+            border-radius: 999px;
+            display: none;
+            box-shadow: 0 0 0 2px #1e293b;
+        }
         .btn-delete { background: #ef4444; padding: 6px 12px; font-size: 13px; width: auto; margin: 0; }
         .btn-edit { background: #d97706; padding: 6px 12px; font-size: 13px; width: auto; margin: 0; margin-left: 5px; }
         .btn-restock { background: #059669; padding: 6px 12px; font-size: 13px; width: auto; margin: 0; margin-left: 5px; }
@@ -94,7 +104,10 @@
 <div class="header">
     <h2>لوحة تحكم المحرر (Admin)</h2>
     <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-      <a href="users_management.html" class="nav-btn" style="background: #7c3aed;">👥 إدارة المستخدمين</a>
+      <a href="users_management.html" class="nav-btn" style="background: #7c3aed;">
+          <span>👥 إدارة المستخدمين</span>
+          <span id="support-chat-badge" class="chat-badge">0</span>
+      </a>
       <a href="expenses.html" class="nav-btn" style="background: #0284c7;">💸 إدارة المصروفات</a>
       <a href="sales_history.html" class="nav-btn">سجل المبيعات والتقارير</a>
       <button class="logout-btn" onclick="logout()">تسجيل الخروج</button>
@@ -212,8 +225,13 @@
     const { createClient } = supabase;
     const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+    const BLOCK_TAG = '[[CHAT_BLOCKED]]';
+    const UNBLOCK_TAG = '[[CHAT_UNBLOCKED]]';
+
     let allInventoryData = [];
     let currentUserEmail = '';
+    let knownUserMessageIds = new Set();
+    let initialChatLoadDone = false;
 
     function showToast(message, type = 'success') {
         const container = document.getElementById('toast-container');
@@ -268,6 +286,49 @@
             .subscribe();
     }
 
+    function updateChatBadge(count) {
+        const badge = document.getElementById('support-chat-badge');
+        if (!badge) return;
+        if (count > 0) {
+            badge.textContent = count;
+            badge.style.display = 'inline-block';
+        } else {
+            badge.style.display = 'none';
+        }
+    }
+
+    async function fetchSupportChatAlerts() {
+        try {
+            const { data, error } = await db
+                .from('support_chats')
+                .select('id, user_email, sender_role, message')
+                .order('id', { ascending: true });
+
+            if (error || !data) return;
+
+            const userMessages = data.filter(
+                row => row.sender_role === 'user' && row.message !== BLOCK_TAG && row.message !== UNBLOCK_TAG
+            );
+
+            updateChatBadge(userMessages.length);
+
+            if (!initialChatLoadDone) {
+                userMessages.forEach(m => knownUserMessageIds.add(m.id));
+                initialChatLoadDone = true;
+                return;
+            }
+
+            userMessages.forEach(m => {
+                if (!knownUserMessageIds.has(m.id)) {
+                    knownUserMessageIds.add(m.id);
+                    showToast(`💬 رسالة جديدة في الشات من: ${m.user_email || 'مستخدم'}`, 'warning');
+                }
+            });
+        } catch (_) {
+            // تجاهل إذا لم يكن جدول support_chats منشأً بعد
+        }
+    }
+
     async function logInventoryMovement(entry) {
         try {
             await db.from('inventory_logs').insert([entry]);
@@ -281,7 +342,7 @@
         if (!isAllowed) return;
         document.body.style.display = 'block';
         watchCurrentUserRole();
-        await Promise.all([fetchInventory(), fetchCapitalSummary()]);
+        await Promise.all([fetchInventory(), fetchCapitalSummary(), fetchSupportChatAlerts()]);
     }
 
     async function fetchCapitalSummary() {
@@ -606,6 +667,9 @@
         })
         .on('postgres_changes', { event: '*', schema: 'public', table: 'settings' }, () => {
             fetchCapitalSummary();
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'support_chats' }, () => {
+            fetchSupportChatAlerts();
         })
         .subscribe();
 
